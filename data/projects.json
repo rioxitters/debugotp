@@ -1,0 +1,26 @@
+[
+  {
+    "project_id": "proj-1-94957",
+    "apiKey": "AIzaSyBllNGJ0MwxHXw1EYyMTab7UW8IP3oN8TU",
+    "fileName": "cc69eca5c4016ef1bf0d6b97386f8df6",
+    "client_email": "firebase-adminsdk-fbsvc@proj-1-94957.iam.gserviceaccount.com",
+    "credits": 10000,
+    "status": "Fresh"
+  },
+  {
+    "project_id": "proj-2-95215",
+    "apiKey": "AIzaSyBAKr_NNjJFB7Ke9IPmREuVsLcBxYUlQ-U",
+    "fileName": "524b67318e7be5d5502a783ccbdd6139",
+    "client_email": "firebase-adminsdk-fbsvc@proj-2-95215.iam.gserviceaccount.com",
+    "credits": 10000,
+    "status": "Fresh"
+  },
+  {
+    "project_id": "proj-3-6bdc3",
+    "apiKey": "AIzaSyD39Hj-JAa461I9A-apJhv5r5qveS3jDAU",
+    "fileName": "62f7671e52ff0acf32551f6eea474f0c",
+    "client_email": "firebase-adminsdk-fbsvc@proj-3-6bdc3.iam.gserviceaccount.com",
+    "credits": 10000,
+    "status": "Fresh"
+  }
+]
