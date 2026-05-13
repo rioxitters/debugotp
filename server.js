@@ -8,18 +8,55 @@ const fs = require('fs');
 const axios = require('axios');
 require('dotenv').config();
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const ADMIN_USERNAME = 'admin@bd';
-const ADMIN_PASSWORD = 'admin 518422';
-const WEBSITE_NAME = 'OTP Service';
-let adminSession = null;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin@bd';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin 518422';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'd3b7g-0tp-s3cr3t-k3y-2026';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key';
+const WEBSITE_NAME = 'DebugOTP';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || process.env.SITE_URL || 'https://debugotp.netlify.app';
 
+// Security Middlewares
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP if it breaks external scripts like Firebase/GSAP, or configure properly
+  crossOriginEmbedderPolicy: false
+}));
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again after 15 minutes'
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Limit each IP to 10 login attempts per hour
+  message: 'Too many login attempts, please try again after an hour'
+});
+
+app.use('/api/', generalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/admin/login', authLimiter);
+
 app.use(cors({ origin: [FRONTEND_URL, 'https://debugotp.netlify.app', 'http://localhost:3001'], credentials: true }));
 app.use(express.json());
+
+// Secure file access - prohibit direct access to sensitive files
+app.use((req, res, next) => {
+  const forbiddenFiles = ['.env', 'firebase-service-account.json', 'users.json', 'projects.json', 'api.json'];
+  if (forbiddenFiles.some(file => req.url.includes(file))) {
+    return res.status(403).json({ success: false, message: 'Access Denied' });
+  }
+  next();
+});
+
 app.use(express.static('public'));
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -105,15 +142,14 @@ async function fbAuthWithRotation(endpoint, body) {
 // ============================================================
 app.post('/api/admin/login', (req, res) => {
   if (req.body.username === ADMIN_USERNAME && req.body.password === ADMIN_PASSWORD) {
-    adminSession = uuidv4();
-    return res.json({ success: true, token: adminSession });
+    return res.json({ success: true, token: ADMIN_SECRET });
   }
   res.status(401).json({ success: false, message: 'Invalid Admin credentials' });
 });
 
 const checkAdminAuth = (req, res, next) => {
   const tk = req.headers.authorization;
-  if (tk === `Bearer ${adminSession}` && adminSession) return next();
+  if (tk === `Bearer ${ADMIN_SECRET}`) return next();
   res.status(401).json({ success: false, message: 'Unauthorized' });
 };
 
@@ -150,7 +186,8 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     if (!auth) throw new Error('Invalid email or password');
-
+    
+    if (firebaseProjects.length === 0) throw new Error('System initialization incomplete. Please contact administrator.');
     const profile = (await axios.post(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseProjects[0].apiKey}`, { idToken: auth.idToken })).data.users[0];
 
     if (!profile.emailVerified) return res.status(403).json({ success: false, message: 'Please verify email', needsVerification: true });
@@ -408,17 +445,65 @@ app.post('/api/otp/send', async (req, res) => {
   }
 });
 
-app.get('/dashboard/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+// URL Encryption Helpers
+function encrypt(text) {
+  const cipher = crypto.createCipheriv('aes-256-cbc', crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32), Buffer.alloc(16, 0));
+  return cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
+}
+
+function decrypt(text) {
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32), Buffer.alloc(16, 0));
+    return decipher.update(text, 'hex', 'utf8') + decipher.final('utf8');
+  } catch (e) { return null; }
+}
+
+app.get('/dashboard/:token', (req, res) => {
+  const decryptedToken = decrypt(req.params.token);
+  // Optional: validate decryptedToken if it contains timestamp or user ID
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
 app.get('/dashboard', (req, res) => {
-  const token = Buffer.from(Math.random().toString(36).substring(2) + Date.now()).toString('base64').replace(/[/+=]/g, '').substring(0, 32);
-  res.redirect(`${FRONTEND_URL}/dashboard/${token}`);
+  const rawToken = Math.random().toString(36).substring(2) + Date.now();
+  const encryptedToken = encrypt(rawToken);
+  res.redirect(`${FRONTEND_URL}/dashboard/${encryptedToken}`);
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/adminlogin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adminlogin.html')));
-app.get('/admin', (req, res) => adminSession ? res.sendFile(path.join(__dirname, 'public', 'admin.html')) : res.redirect(`${FRONTEND_URL}/adminlogin`));
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html')));
+app.get('/admin/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAXQfOgwauqIZMAbEVsOiDXjFWy1UtDZb8",
+    authDomain: "pro-1-ad7ed.firebaseapp.com",
+    projectId: "pro-1-ad7ed",
+    appId: "1:330829645630:web:8e630fead2760482f2ce6f"
+  });
+});
+
 app.get('/loading', (req, res) => res.sendFile(path.join(__dirname, 'public', 'loading.html')));
 app.get('/personalization', (req, res) => res.sendFile(path.join(__dirname, 'public', 'personalization.html')));
-app.get(['/verify-email', '/verify', '/__/auth/action'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'verify.html')));
+
+app.get(['/verify-email', '/verify', '/__/auth/action'], (req, res) => {
+  // If the URL has plain parameters, redirect to an encrypted version for "full secure"
+  const { mode, oobCode, apiKey } = req.query;
+  if (mode && oobCode && apiKey) {
+    const encrypted = encrypt(JSON.stringify({ mode, oobCode, apiKey }));
+    return res.redirect(`/verify?v=${encrypted}`);
+  }
+  res.sendFile(path.join(__dirname, 'public', 'verify.html'));
+});
+
+app.get('/api/verify-decrypt', (req, res) => {
+  const data = decrypt(req.query.v);
+  if (data) {
+    try {
+      return res.json({ success: true, ...JSON.parse(data) });
+    } catch (e) { }
+  }
+  res.status(400).json({ success: false });
+});
 
 app.listen(PORT, () => console.log(`🚀 REAL Server running on http://localhost:${PORT}`));
