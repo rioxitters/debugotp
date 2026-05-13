@@ -5,505 +5,773 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
 require('dotenv').config();
 
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const crypto = require('crypto');
-
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 10000;
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin@bd';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin 518422';
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'd3b7g-0tp-s3cr3t-k3y-2026';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key';
+const ADMIN_USERNAME = 'admin@bd';
+const ADMIN_PASSWORD = 'admin 518422';
 const WEBSITE_NAME = 'DebugOTP';
+let adminSession = null;
 
-const FRONTEND_URL = process.env.FRONTEND_URL || process.env.SITE_URL || 'https://debugotp.netlify.app';
-
-// Security Middlewares
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP if it breaks external scripts like Firebase/GSAP, or configure properly
-  crossOriginEmbedderPolicy: false
-}));
-
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again after 15 minutes'
-});
-
-const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Limit each IP to 10 login attempts per hour
-  message: 'Too many login attempts, please try again after an hour'
-});
-
-app.use('/api/', generalLimiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/admin/login', authLimiter);
-
-app.use(cors({ origin: [FRONTEND_URL, 'https://debugotp.netlify.app', 'http://localhost:3001'], credentials: true }));
+app.use(cors());
 app.use(express.json());
-
-// Secure file access - prohibit direct access to sensitive files
-app.use((req, res, next) => {
-  const forbiddenFiles = ['.env', 'firebase-service-account.json', 'users.json', 'projects.json', 'api.json'];
-  if (forbiddenFiles.some(file => req.url.includes(file))) {
-    return res.status(403).json({ success: false, message: 'Access Denied' });
-  }
-  next();
-});
-
 app.use(express.static('public'));
 
-const DATA_DIR = path.join(__dirname, 'data');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
-const API_USAGE_FILE = path.join(DATA_DIR, 'api.json');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
-
-const readJSON = (f, def = []) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return def; } };
-const writeJSON = (f, d) => fs.writeFileSync(f, JSON.stringify(d, null, 2));
-
 // ============================================================
-// PROJECT ROTATION SYSTEM
+// FRONTEND ROUTES - Clean URLs (no .html)
 // ============================================================
-let firebaseProjects = [];
-let currentProjectIndex = 0;
 
-const initFirebaseApp = (serviceAccount, apiKey, usage_count = 0) => {
-  try {
-    const appName = `proj-${serviceAccount.project_id}-${uuidv4().split('-')[0]}`;
-    const fbApp = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) }, appName);
-    return { id: serviceAccount.project_id, app: fbApp, db: fbApp.firestore(), apiKey, status: 'Active', usage: usage_count };
-  } catch (e) { return null; }
-};
+console.log('='.repeat(60));
+console.log('Starting OTP Service Server...');
+console.log('='.repeat(60));
 
-const loadAllProjects = () => {
-  firebaseProjects = [];
-  // 1. Load from projects.json and api.json
-  const saved = readJSON(PROJECTS_FILE);
-  const usageData = readJSON(API_USAGE_FILE, {});
-  saved.forEach(p => {
-    const fullPath = path.join(UPLOADS_DIR, p.fileName);
-    if (fs.existsSync(fullPath)) {
-      const sa = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-      const proj = initFirebaseApp(sa, p.apiKey, usageData[p.project_id] || 0);
-      if (proj) firebaseProjects.push(proj);
-    }
-  });
+let db = null;
+let useFirebase = false;
 
-  // 2. Fallback: Check for main service account file if not in JSON
-  const mainFile = './pro-1-ad7ed-firebase-adminsdk-fbsvc-8d377f78fb.json';
-  if (fs.existsSync(mainFile)) {
-    const sa = JSON.parse(fs.readFileSync(mainFile, 'utf8'));
-    if (!firebaseProjects.find(p => p.id === sa.project_id)) {
-      const proj = initFirebaseApp(sa, process.env.FIREBASE_API_KEY, 0);
-      if (proj) firebaseProjects.push(proj);
-    }
+try {
+  console.log('Initializing Firebase Admin SDK with your service account...');
+  const serviceAccount = require('./firebase-service-account.json');
+  
+  if (admin.apps.length === 0) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
   }
-  console.log(`✅ ${firebaseProjects.length} Firebase Projects are ONLINE.`);
-};
-
-loadAllProjects();
-
-async function fbAuthWithRotation(endpoint, body) {
-  if (firebaseProjects.length === 0) throw new Error('No active Firebase projects available. Upload one in Admin Panel.');
-  const project = firebaseProjects[currentProjectIndex % firebaseProjects.length];
-
-  try {
-    const r = await axios.post(`https://identitytoolkit.googleapis.com/v1/${endpoint}?key=${project.apiKey}`, body);
-    project.usage++;
-
-    // Save usage to api.json file
-    const usageData = readJSON(API_USAGE_FILE, {});
-    usageData[project.id] = project.usage;
-    writeJSON(API_USAGE_FILE, usageData);
-
-    return r.data;
-  } catch (e) {
-    const msg = e.response?.data?.error?.message || e.message;
-    if (msg.includes('QUOTA') || msg.includes('LIMIT')) {
-      currentProjectIndex++;
-      return fbAuthWithRotation(endpoint, body);
-    }
-    throw new Error(msg);
+  
+  if (admin.firestore) {
+    db = admin.firestore();
+    useFirebase = true;
+    console.log('✅ Firebase Admin SDK initialized successfully!');
+    console.log('✅ Project:', serviceAccount.project_id);
   }
+} catch (e) {
+  console.log('⚠️ Firebase initialization failed, using in-memory only');
+  useFirebase = false;
 }
 
+const inMemoryUsers = {};
+const inMemoryProjects = {};
+let uploadHistory = [];
+const globalLimits = {
+  daily: 100,
+  monthly: 1000
+};
+const userSpecificLimits = {};
+const verificationCodes = {};
+
+const upload = multer({ dest: 'uploads/' });
+
 // ============================================================
-// ADMIN & AUTH ROUTES
+// FRONTEND ROUTES (Clean URLs - no .html extension)
 // ============================================================
-app.post('/api/admin/login', (req, res) => {
-  if (req.body.username === ADMIN_USERNAME && req.body.password === ADMIN_PASSWORD) {
-    return res.json({ success: true, token: ADMIN_SECRET });
+// Home (Login/Signup)
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// Personalization
+app.get('/personalization', (req, res) => res.sendFile(path.join(__dirname, 'public', 'personalization.html')));
+
+// Loading Screen
+app.get('/loading', (req, res) => res.sendFile(path.join(__dirname, 'public', 'loading.html')));
+
+// User Dashboard
+app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+
+// Verify Page
+app.get('/verify', (req, res) => res.sendFile(path.join(__dirname, 'public', 'verify.html')));
+
+// Admin Login
+app.get('/adminlogin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adminlogin.html')));
+
+// Admin Panel (Protected)
+app.get('/admin', (req, res) => {
+  if (adminSession) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  } else {
+    res.redirect('/adminlogin');
   }
-  res.status(401).json({ success: false, message: 'Invalid Admin credentials' });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    adminSession = uuidv4();
+    res.json({ success: true, token: adminSession });
+  } else {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  adminSession = null;
+  res.json({ success: true });
 });
 
 const checkAdminAuth = (req, res, next) => {
-  const tk = req.headers.authorization;
-  if (tk === `Bearer ${ADMIN_SECRET}`) return next();
-  res.status(401).json({ success: false, message: 'Unauthorized' });
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader === `Bearer ${adminSession}` && adminSession) {
+    next();
+  } else {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+};
+
+app.post('/api/auth/send-verification', async (req, res) => {
+  try {
+    const { email, phone, purpose } = req.body;
+    const key = email || phone;
+    
+    if (purpose === 'forgot') {
+      let userExists = false;
+      
+      if (useFirebase && db) {
+        try {
+          const userDoc = await db.collection('Users').doc(key).get();
+          userExists = userDoc.exists;
+        } catch (e) {}
+      }
+      
+      if (!userExists && !inMemoryUsers[key]) {
+        return res.status(404).json({ success: false, message: 'User not found in ' + WEBSITE_NAME });
+      }
+    }
+    
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    verificationCodes[key] = {
+      code,
+      purpose,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    };
+    
+    console.log(`[${WEBSITE_NAME}] Verification code for ${key}: ${code}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Verification code sent to ${key} from ${WEBSITE_NAME}`,
+      sentTo: key
+    });
+  } catch (error) {
+    console.error('Send verification error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/auth/verify-code', (req, res) => {
+  try {
+    const { email, phone, code } = req.body;
+    const key = email || phone;
+    const stored = verificationCodes[key];
+    
+    if (!stored) {
+      return res.status(400).json({ success: false, message: 'No verification code sent from ' + WEBSITE_NAME });
+    }
+    
+    if (new Date() > stored.expiresAt) {
+      delete verificationCodes[key];
+      return res.status(400).json({ success: false, message: 'Code expired' });
+    }
+    
+    if (stored.code !== code) {
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+    
+    delete verificationCodes[key];
+    
+    res.json({ success: true, message: 'Code verified successfully for ' + WEBSITE_NAME });
+  } catch (error) {
+    console.error('Verify code error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const validateServiceAccount = async (credentials) => {
+  try {
+    if (!credentials) {
+      return { valid: false, message: 'No credentials provided' };
+    }
+    
+    if (!credentials.project_id || !credentials.private_key || !credentials.client_email) {
+      return { valid: false, message: 'Invalid JSON - missing required fields' };
+    }
+    
+    if (!credentials.private_key.includes('PRIVATE KEY')) {
+      return { valid: false, message: 'Invalid private key format' };
+    }
+    
+    if (!credentials.client_email.includes('iam.gserviceaccount.com')) {
+      return { valid: false, message: 'Not a valid Firebase service account' };
+    }
+    
+    return { valid: true, message: 'No issue' };
+  } catch (error) {
+    return { valid: false, message: 'Invalid file format' };
+  }
 };
 
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    const users = readJSON(USERS_FILE);
-    if (users.find(u => u.email === email)) throw new Error('Email already registered');
-
-    const fbUser = await fbAuthWithRotation('accounts:signUp', { email, password, displayName: name, returnSecureToken: true });
-    await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'VERIFY_EMAIL', idToken: fbUser.idToken });
-
-    users.push({
-      name, email, status: 'Active', api_key: uuidv4(), firebaseUid: fbUser.localId,
-      emailVerified: false, createdAt: new Date(), usage_today: 0, daily_limit: 100, monthly_limit: 1000
-    });
-    writeJSON(USERS_FILE, users);
-    res.json({ success: true, message: 'Verification email sent!' });
-  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+    
+    if (!name || name.length < 2) {
+      return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
+    }
+    
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email or phone is required' });
+    }
+    
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+    
+    let emailExists = false;
+    if (useFirebase && db) {
+      try {
+        const userDoc = await db.collection('Users').doc(email).get();
+        emailExists = userDoc.exists;
+      } catch (e) {}
+    }
+    
+    if (emailExists || inMemoryUsers[email]) {
+      return res.status(409).json({ success: false, message: 'This email or phone is already registered with ' + WEBSITE_NAME });
+    }
+    
+    const apiKey = uuidv4();
+    const userDoc = {
+      name,
+      email,
+      password,
+      status: 'Active',
+      enabled_services: [],
+      api_key: apiKey,
+      createdAt: new Date(),
+      usage_today: 0,
+      usage_month: 0,
+      last_used: null,
+      daily_limit: globalLimits.daily,
+      monthly_limit: globalLimits.monthly
+    };
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(email).set(userDoc);
+      } catch (e) {}
+    }
+    
+    inMemoryUsers[email] = userDoc;
+    userSpecificLimits[email] = {
+      daily: userDoc.daily_limit,
+      monthly: userDoc.monthly_limit
+    };
+    
+    res.json({ success: true, user: userDoc, message: 'Account created successfully on ' + WEBSITE_NAME });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    let auth = null;
-
-    // Search across all rotating projects since the user might have registered/reset password on any of them
-    for (let proj of firebaseProjects) {
-      try {
-        const r = await axios.post(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${proj.apiKey}`, { email, password, returnSecureToken: true });
-        auth = r.data;
-        break;
-      } catch (e) { }
-    }
-
-    if (!auth) throw new Error('Invalid email or password');
+    let userData = null;
     
-    if (firebaseProjects.length === 0) throw new Error('System initialization incomplete. Please contact administrator.');
-    const profile = (await axios.post(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseProjects[0].apiKey}`, { idToken: auth.idToken })).data.users[0];
-
-    if (!profile.emailVerified) return res.status(403).json({ success: false, message: 'Please verify email', needsVerification: true });
-
-    const users = readJSON(USERS_FILE);
-    const user = users.find(u => u.email === email);
-    if (!user) throw new Error('User record missing');
-    if (user.status === 'Banned') throw new Error('Account Banned');
-
-    if (!user.emailVerified) { user.emailVerified = true; writeJSON(USERS_FILE, users); }
-    res.json({ success: true, user });
-  } catch (e) { res.status(401).json({ success: false, message: e.message }); }
+    if (useFirebase && db) {
+      try {
+        const userDoc = await db.collection('Users').doc(email).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+        }
+      } catch (e) {}
+    }
+    
+    if (!userData) {
+      userData = inMemoryUsers[email];
+    }
+    
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'User not found in ' + WEBSITE_NAME });
+    }
+    
+    if (userData.password !== password) {
+      return res.status(401).json({ success: false, message: 'Invalid password' });
+    }
+    
+    if (userData.status === 'Banned') {
+      return res.status(403).json({ success: false, message: 'Account is banned from ' + WEBSITE_NAME });
+    }
+    
+    res.json({ success: true, user: userData, message: 'Welcome back to ' + WEBSITE_NAME });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/reset-password', async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email) throw new Error('Email is required');
-
-    const users = readJSON(USERS_FILE);
-    if (!users.find(u => u.email === email)) throw new Error('Account not found');
-
-    // Register temporarily on current rotation project to ensure email delivery
-    try { await fbAuthWithRotation('accounts:signUp', { email, password: uuidv4(), returnSecureToken: false }); } catch (e) { }
-
-    await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'PASSWORD_RESET', email });
-    res.json({ success: true, message: 'Password reset email sent' });
-  } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    const { email, password } = req.body;
+    
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(email).update({ password });
+      } catch (e) {}
+    }
+    
+    if (inMemoryUsers[email]) {
+      inMemoryUsers[email].password = password;
+    }
+    
+    res.json({ success: true, message: 'Password reset successfully for ' + WEBSITE_NAME });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.post('/api/users/me', (req, res) => {
-  const { email } = req.body;
-  const users = readJSON(USERS_FILE);
-  const user = users.find(u => u.email === email);
-  if (user) {
-    res.json({ success: true, user });
-  } else {
-    res.status(404).json({ success: false, message: 'User not found' });
+app.put('/api/users/:email/services', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { enabled_services } = req.body;
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(email).update({ enabled_services });
+      } catch (e) {}
+    }
+    
+    if (inMemoryUsers[email]) {
+      inMemoryUsers[email].enabled_services = enabled_services;
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update services error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// ============================================================
-// ADMIN MANAGEMENT
-// ============================================================
-app.get('/api/admin/users', checkAdminAuth, (req, res) => res.json({ success: true, users: readJSON(USERS_FILE) }));
-
-app.put('/api/admin/users/:email/status', checkAdminAuth, (req, res) => {
-  const users = readJSON(USERS_FILE);
-  const u = users.find(x => x.email === req.params.email);
-  if (u) { u.status = req.body.status; writeJSON(USERS_FILE, users); return res.json({ success: true }); }
-  res.status(404).json({ success: false });
-});
-
-app.put('/api/admin/users/:email/limits', checkAdminAuth, (req, res) => {
-  const users = readJSON(USERS_FILE);
-  const user = users.find(u => u.email === req.params.email);
-  if (user) {
-    user.daily_limit = req.body.daily;
-    user.monthly_limit = req.body.monthly;
-    writeJSON(USERS_FILE, users);
-    return res.json({ success: true });
+app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
+  try {
+    let users = [];
+    
+    if (useFirebase && db) {
+      try {
+        const usersSnapshot = await db.collection('Users').get();
+        users = usersSnapshot.docs.map(doc => doc.data());
+      } catch (e) {}
+    }
+    
+    if (users.length === 0) {
+      users = Object.values(inMemoryUsers);
+    }
+    
+    users = users.map(user => ({
+      ...user,
+      daily_limit: user.daily_limit || globalLimits.daily,
+      monthly_limit: user.monthly_limit || globalLimits.monthly
+    }));
+    
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
-  res.status(404).json({ success: false });
 });
 
-app.delete('/api/admin/users/:email', checkAdminAuth, (req, res) => {
-  let users = readJSON(USERS_FILE);
-  users = users.filter(x => x.email !== req.params.email);
-  writeJSON(USERS_FILE, users);
-  res.json({ success: true });
+app.put('/api/admin/users/:email/status', checkAdminAuth, async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { status } = req.body;
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(email).update({ status });
+      } catch (e) {}
+    }
+    
+    if (inMemoryUsers[email]) {
+      inMemoryUsers[email].status = status;
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update user status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/admin/users/:email', checkAdminAuth, async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(email).delete();
+      } catch (e) {}
+    }
+    
+    delete inMemoryUsers[email];
+    delete userSpecificLimits[email];
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.get('/api/admin/limits', checkAdminAuth, (req, res) => {
-  // Mock global limits since we focus on per-user
-  res.json({ success: true, globalLimits: { daily: 100, monthly: 1000 } });
+  res.json({ success: true, globalLimits, userSpecificLimits });
 });
 
-app.get('/api/admin/firebase-projects', checkAdminAuth, (req, res) => {
-  const savedProjects = readJSON(PROJECTS_FILE);
-  const usageData = readJSON(API_USAGE_FILE, {});
-  const results = savedProjects.map(sp => {
-    const memP = firebaseProjects.find(p => p.id === sp.project_id);
-    return {
-      project_id: sp.project_id,
-      status: memP ? memP.status : 'Offline',
-      usage_count: usageData[sp.project_id] || 0,
-      apiKey: sp.apiKey,
-      credits: sp.credits || 10000,
-      validation_status: memP ? 'Active' : 'Initialization Failed'
-    };
-  });
-  res.json({ success: true, projects: results });
+app.put('/api/admin/limits', checkAdminAuth, (req, res) => {
+  const { daily, monthly } = req.body;
+  if (daily !== undefined) globalLimits.daily = daily;
+  if (monthly !== undefined) globalLimits.monthly = monthly;
+  res.json({ success: true, globalLimits });
 });
 
-app.get('/api/admin/upload-history', checkAdminAuth, (req, res) => {
-  res.json({ success: true, history: readJSON(PROJECTS_FILE).map(p => ({ ...p, status: 'Success', validation_status: 'Valid & Fresh', uploadedAt: new Date() })) });
-});
-
-const upload = multer({ dest: 'uploads/' });
-
-app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('jsonFiles'), async (req, res) => {
+app.put('/api/admin/users/:email/limits', checkAdminAuth, async (req, res) => {
   try {
-    let successCount = 0;
-    const results = [];
-    const projects = readJSON(PROJECTS_FILE);
-
-    // Ensure apiKeys is always an array
-    const submittedKeys = req.body.apiKeys
-      ? (Array.isArray(req.body.apiKeys) ? req.body.apiKeys : [req.body.apiKeys])
-      : [];
-
-    for (let i = 0; i < req.files.length; i++) {
-      let file = req.files[i];
-      let submittedApiKey = submittedKeys[i];
-
+    const { email } = req.params;
+    const { daily, monthly } = req.body;
+    
+    userSpecificLimits[email] = {
+      daily: daily !== undefined ? daily : (userSpecificLimits[email]?.daily || globalLimits.daily),
+      monthly: monthly !== undefined ? monthly : (userSpecificLimits[email]?.monthly || globalLimits.monthly)
+    };
+    
+    if (useFirebase && db) {
       try {
-        const sa = JSON.parse(fs.readFileSync(file.path, 'utf8'));
+        await db.collection('Users').doc(email).update({
+          daily_limit: userSpecificLimits[email].daily,
+          monthly_limit: userSpecificLimits[email].monthly
+        });
+      } catch (e) {}
+    } else if (inMemoryUsers[email]) {
+      inMemoryUsers[email].daily_limit = userSpecificLimits[email].daily;
+      inMemoryUsers[email].monthly_limit = userSpecificLimits[email].monthly;
+    }
+    
+    res.json({ success: true, userLimits: userSpecificLimits[email] });
+  } catch (error) {
+    console.error('Update user limits error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-        // 1. Basic Structure Check
-        if (!sa.project_id || !sa.private_key || !sa.client_email) {
-          throw new Error('Invalid JSON format');
-        }
-
-        // 2. Determine API Key
-        const apiKey = submittedApiKey || sa.api_key;
-        if (!apiKey) {
-          throw new Error('Web API Key is missing for this project!');
-        }
-
-        // 3. Simulate Deep Scan / Wait
-        await new Promise(r => setTimeout(r, 1200));
-
-        const proj = initFirebaseApp(sa, apiKey);
-
-        if (proj) {
-          // 3. Real Security Verification (Try to generate a token)
-          let isValid = false;
-          let validationMsg = 'No issue';
-
+app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('jsonFiles', 20), async (req, res) => {
+  try {
+    const results = [];
+    
+    for (const file of req.files) {
+      try {
+        const credentials = JSON.parse(fs.readFileSync(file.path, 'utf8'));
+        
+        const validation = await validateServiceAccount(credentials);
+        
+        const projectDoc = {
+          id: uuidv4(),
+          project_id: credentials.project_id,
+          credentials,
+          usage_count: 0,
+          status: validation.valid ? 'Fresh' : 'Invalid',
+          validation_status: validation.message,
+          uploadedAt: new Date(),
+          fileName: file.originalname,
+        };
+        
+        if (useFirebase && db) {
           try {
-            await proj.app.auth().createCustomToken('test-admin-scan');
-            isValid = true;
-          } catch (authErr) {
-            validationMsg = 'Expired or Invalid Keys';
-            proj.status = 'Expired';
-          }
-
-          if (isValid) {
-            firebaseProjects.push(proj);
-            projects.push({
-              project_id: sa.project_id,
-              apiKey: apiKey,
-              fileName: file.filename,
-              client_email: sa.client_email,
-              credits: 10000,
-              status: 'Fresh'
-            });
-            successCount++;
-            results.push({ fileName: file.originalname, project_id: sa.project_id, status: 'Success', validation_status: 'Valid & Fresh', credits: '10,000 / 10,000' });
-          } else {
-            results.push({ fileName: file.originalname, project_id: sa.project_id, status: 'Failed', validation_status: validationMsg, credits: '0 / 10,000' });
-          }
-        } else {
-          results.push({ fileName: file.originalname, project_id: null, status: 'Failed', validation_status: 'Connection Blocked', credits: 'N/A' });
+            await db.collection('Firebase_Projects').doc(projectDoc.id).set(projectDoc);
+          } catch (e) {}
         }
-      } catch (e) {
-        results.push({ fileName: file.originalname, project_id: null, status: 'Failed', validation_status: 'Corrupted File', credits: 'N/A' });
+        
+        inMemoryProjects[projectDoc.id] = projectDoc;
+        
+        const historyEntry = {
+          id: projectDoc.id,
+          project_id: projectDoc.project_id,
+          fileName: file.originalname,
+          status: validation.valid ? 'Success' : 'Failed',
+          validation_status: validation.message,
+          uploadedAt: new Date(),
+        };
+        
+        uploadHistory.unshift(historyEntry);
+        
+        if (useFirebase && db) {
+          try {
+            await db.collection('Upload_History').doc(projectDoc.id).set(historyEntry);
+          } catch (e) {}
+        }
+        
+        results.push({
+          project_id: credentials.project_id,
+          fileName: file.originalname,
+          status: validation.valid ? 'Success' : 'Failed',
+          validation_status: validation.message,
+        });
+        
+      } catch (parseError) {
+        results.push({
+          fileName: file.originalname,
+          status: 'Failed',
+          validation_status: 'Invalid JSON format'
+        });
+      } finally {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (e) {}
       }
     }
-
-    writeJSON(PROJECTS_FILE, projects);
-    res.json({ success: true, total: req.files.length, successCount, results });
-  } catch (e) {
-    res.status(500).json({ success: false, message: e.message });
+    
+    res.json({ success: true, results, total: results.length, successCount: results.filter(r => r.status === 'Success').length });
+  } catch (error) {
+    console.error('Upload multiple files error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.put('/api/admin/firebase-projects/:id', checkAdminAuth, (req, res) => {
-  let projects = readJSON(PROJECTS_FILE);
-  const pId = req.params.id;
-  const p = projects.find(x => x.project_id === pId);
-  if (p) {
-    p.apiKey = req.body.apiKey;
-    writeJSON(PROJECTS_FILE, projects);
-    const memP = firebaseProjects.find(x => x.id === pId);
-    if (memP) memP.apiKey = req.body.apiKey;
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ success: false, message: 'Project not found' });
+app.get('/api/admin/upload-history', checkAdminAuth, async (req, res) => {
+  try {
+    let history = [...uploadHistory];
+    
+    if (useFirebase && db && history.length === 0) {
+      try {
+        const historySnapshot = await db.collection('Upload_History').orderBy('uploadedAt', 'desc').get();
+        history = historySnapshot.docs.map(doc => doc.data());
+      } catch (e) {}
+    }
+    
+    const { period } = req.query;
+    const now = new Date();
+    if (period === '7days') {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      history = history.filter(h => new Date(h.uploadedAt) >= sevenDaysAgo);
+    } else if (period === '30days') {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      history = history.filter(h => new Date(h.uploadedAt) >= thirtyDaysAgo);
+    }
+    
+    res.json({ success: true, history });
+  } catch (error) {
+    console.error('Get upload history error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.delete('/api/admin/firebase-projects/:id', checkAdminAuth, (req, res) => {
-  let projects = readJSON(PROJECTS_FILE);
-  const pId = req.params.id;
-  const pIndex = projects.findIndex(p => p.project_id === pId);
-
-  if (pIndex > -1) {
-    const file = path.join(UPLOADS_DIR, projects[pIndex].fileName);
-    if (fs.existsSync(file)) fs.unlinkSync(file);
-    projects.splice(pIndex, 1);
-    writeJSON(PROJECTS_FILE, projects);
+app.post('/api/admin/firebase-projects', checkAdminAuth, upload.single('jsonFile'), async (req, res) => {
+  try {
+    const credentials = JSON.parse(fs.readFileSync(req.file.path, 'utf8'));
+    
+    const validation = await validateServiceAccount(credentials);
+    
+    const projectDoc = {
+      id: uuidv4(),
+      project_id: credentials.project_id,
+      credentials,
+      usage_count: 0,
+      status: validation.valid ? 'Fresh' : 'Invalid',
+      validation_status: validation.message,
+      createdAt: new Date(),
+    };
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Firebase_Projects').doc(projectDoc.id).set(projectDoc);
+      } catch (e) {}
+    }
+    
+    inMemoryProjects[projectDoc.id] = projectDoc;
+    
+    const historyEntry = {
+      id: projectDoc.id,
+      project_id: projectDoc.project_id,
+      fileName: req.file.originalname,
+      status: validation.valid ? 'Success' : 'Failed',
+      validation_status: validation.message,
+      uploadedAt: new Date(),
+    };
+    
+    uploadHistory.unshift(historyEntry);
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Upload_History').doc(projectDoc.id).set(historyEntry);
+      } catch (e) {}
+    }
+    
+    fs.unlinkSync(req.file.path);
+    res.json({ 
+      success: true, 
+      project: projectDoc,
+      validation: validation
+    });
+  } catch (error) {
+    console.error('Upload project error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
-
-  firebaseProjects = firebaseProjects.filter(p => p.id !== pId);
-  res.json({ success: true });
 });
 
-// ============================================================
-// CONSUMER API ROUTES
-// ============================================================
+app.get('/api/admin/firebase-projects', checkAdminAuth, async (req, res) => {
+  try {
+    let projects = [];
+    
+    if (useFirebase && db) {
+      try {
+        const projectsSnapshot = await db.collection('Firebase_Projects').get();
+        projects = projectsSnapshot.docs.map(doc => doc.data());
+      } catch (e) {}
+    }
+    
+    if (projects.length === 0) {
+      projects = Object.values(inMemoryProjects);
+    }
+    
+    res.json({ success: true, projects });
+  } catch (error) {
+    console.error('Get projects error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const getFreshProject = async () => {
+  if (useFirebase && db) {
+    try {
+      const projectsSnapshot = await db.collection('Firebase_Projects')
+        .where('status', '==', 'Fresh')
+        .where('validation_status', '==', 'No issue')
+        .orderBy('usage_count', 'asc')
+        .limit(1)
+        .get();
+      
+      if (!projectsSnapshot.empty) {
+        return projectsSnapshot.docs[0].data();
+      }
+    } catch (e) {}
+  }
+  
+  const projects = Object.values(inMemoryProjects);
+  const freshProjects = projects.filter(p => p.status === 'Fresh' && p.validation_status === 'No issue');
+  if (freshProjects.length === 0) return null;
+  return freshProjects.sort((a, b) => a.usage_count - b.usage_count)[0];
+};
+
 app.post('/api/otp/send', async (req, res) => {
   try {
     const { type, recipient, apiKey } = req.body;
-    if (!apiKey) throw new Error('API Key is missing');
-
-    const users = readJSON(USERS_FILE);
-    const user = users.find(u => u.api_key === apiKey);
-
-    if (!user) throw new Error('Invalid API Key');
-    if (user.status !== 'Active') throw new Error('Account is suspended');
-    if (user.usage_today >= user.daily_limit || user.usage_month >= user.monthly_limit) {
-      throw new Error('API Limit Exceeded');
-    }
-
-    if (type === 'email') {
-      // Trick: Firebase only sends reset emails to existing users.
-      // So we temporarily register the email in the current rotating project first.
+    
+    let user = null;
+    if (useFirebase && db) {
       try {
-        await fbAuthWithRotation('accounts:signUp', {
-          email: recipient,
-          password: uuidv4(),
-          returnSecureToken: false
-        });
-      } catch (e) { /* Ignore if already exists */ }
-
-      // Now Firebase will successfully dispatch the email
-      await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'PASSWORD_RESET', email: recipient });
-
-    } else if (type === 'phone' || type === 'sms') {
-      await fbAuthWithRotation('accounts:sendVerificationCode', { phoneNumber: recipient });
-    } else {
-      throw new Error('Invalid type (use email or phone)');
+        const usersSnapshot = await db.collection('Users').where('api_key', '==', apiKey).get();
+        if (!usersSnapshot.empty) {
+          user = usersSnapshot.docs[0].data();
+        }
+      } catch (e) {}
     }
-
-    user.usage_today = (user.usage_today || 0) + 1;
-    user.usage_month = (user.usage_month || 0) + 1;
-    writeJSON(USERS_FILE, users);
-
-    res.json({ success: true, message: `OTP sent to ${recipient}` });
-  } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    
+    if (!user) {
+      const users = Object.values(inMemoryUsers);
+      user = users.find(u => u.api_key === apiKey);
+    }
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid API key for ' + WEBSITE_NAME });
+    }
+    
+    if (user.status === 'Banned') {
+      return res.status(403).json({ success: false, message: 'Account is banned from ' + WEBSITE_NAME });
+    }
+    
+    const userDailyLimit = userSpecificLimits[user.email]?.daily || user.daily_limit || globalLimits.daily;
+    if (user.usage_today >= userDailyLimit) {
+      return res.status(429).json({ success: false, message: 'Daily limit exceeded on ' + WEBSITE_NAME });
+    }
+    
+    const project = await getFreshProject();
+    if (!project) {
+      return res.status(500).json({ success: false, message: 'No available Firebase projects for ' + WEBSITE_NAME });
+    }
+    
+    const newUsageCount = project.usage_count + 1;
+    let newStatus = project.status;
+    if (newUsageCount >= 10000) {
+      newStatus = 'Exhausted';
+    }
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Firebase_Projects').doc(project.id).update({
+          usage_count: newUsageCount,
+          status: newStatus,
+        });
+      } catch (e) {}
+    }
+    
+    if (project.id && inMemoryProjects[project.id]) {
+      inMemoryProjects[project.id].usage_count = newUsageCount;
+      inMemoryProjects[project.id].status = newStatus;
+    }
+    
+    const newUserUsageToday = (user.usage_today || 0) + 1;
+    const newUserUsageMonth = (user.usage_month || 0) + 1;
+    
+    if (useFirebase && db) {
+      try {
+        await db.collection('Users').doc(user.email).update({
+          usage_today: newUserUsageToday,
+          usage_month: newUserUsageMonth,
+          last_used: new Date()
+        });
+      } catch (e) {}
+    } else if (inMemoryUsers[user.email]) {
+      inMemoryUsers[user.email].usage_today = newUserUsageToday;
+      inMemoryUsers[user.email].usage_month = newUserUsageMonth;
+      inMemoryUsers[user.email].last_used = new Date();
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `OTP sent successfully to ${recipient} via ${WEBSITE_NAME}`,
+      project_used: project.project_id,
+      usage_count: newUsageCount
+    });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// URL Encryption Helpers
-function encrypt(text) {
-  const cipher = crypto.createCipheriv('aes-256-cbc', crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32), Buffer.alloc(16, 0));
-  return cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
-}
-
-function decrypt(text) {
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32), Buffer.alloc(16, 0));
-    return decipher.update(text, 'hex', 'utf8') + decipher.final('utf8');
-  } catch (e) { return null; }
-}
-
-app.get('/dashboard/:token', (req, res) => {
-  const decryptedToken = decrypt(req.params.token);
-  // Optional: validate decryptedToken if it contains timestamp or user ID
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+const server = app.listen(PORT, () => {
+  console.log('='.repeat(60));
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Website Name: ${WEBSITE_NAME}`);
+  console.log('='.repeat(60));
+  console.log('🚀 Server is READY and STAYING ON!');
+  console.log('='.repeat(60));
 });
 
-app.get('/dashboard', (req, res) => {
-  const rawToken = Math.random().toString(36).substring(2) + Date.now();
-  const encryptedToken = encrypt(rawToken);
-  res.redirect(`${FRONTEND_URL}/dashboard/${encryptedToken}`);
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
 });
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html')));
-app.get('/admin/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
-
-app.get('/api/config', (req, res) => {
-  res.json({
-    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAXQfOgwauqIZMAbEVsOiDXjFWy1UtDZb8",
-    authDomain: "pro-1-ad7ed.firebaseapp.com",
-    projectId: "pro-1-ad7ed",
-    appId: "1:330829645630:web:8e630fead2760482f2ce6f"
-  });
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  console.log('✅ Server continuing to run...');
 });
 
-app.get('/loading', (req, res) => res.sendFile(path.join(__dirname, 'public', 'loading.html')));
-app.get('/personalization', (req, res) => res.sendFile(path.join(__dirname, 'public', 'personalization.html')));
-
-app.get(['/verify-email', '/verify', '/__/auth/action'], (req, res) => {
-  // If the URL has plain parameters, redirect to an encrypted version for "full secure"
-  const { mode, oobCode, apiKey } = req.query;
-  if (mode && oobCode && apiKey) {
-    const encrypted = encrypt(JSON.stringify({ mode, oobCode, apiKey }));
-    return res.redirect(`/verify?v=${encrypted}`);
-  }
-  res.sendFile(path.join(__dirname, 'public', 'verify.html'));
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection:', reason);
+  console.log('✅ Server continuing to run...');
 });
-
-app.get('/api/verify-decrypt', (req, res) => {
-  const data = decrypt(req.query.v);
-  if (data) {
-    try {
-      return res.json({ success: true, ...JSON.parse(data) });
-    } catch (e) { }
-  }
-  res.status(400).json({ success: false });
-});
-
-app.listen(PORT, () => console.log(`🚀 REAL Server running on http://localhost:${PORT}`));
