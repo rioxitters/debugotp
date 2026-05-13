@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 10000;
 const ADMIN_USERNAME = 'admin@bd';
 const ADMIN_PASSWORD = 'admin 518422';
 const WEBSITE_NAME = 'DebugOTP';
+const BASE_URL = 'https://debugotp.netlify.app';
 let adminSession = null;
 
 app.use(cors());
@@ -61,7 +62,9 @@ const globalLimits = {
 const userSpecificLimits = {};
 const verificationCodes = {};
 
-const upload = multer({ dest: 'uploads/' });
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const upload = multer({ dest: UPLOADS_DIR });
 
 // ============================================================
 // FRONTEND ROUTES (Clean URLs - no .html extension)
@@ -107,6 +110,55 @@ app.post('/api/admin/login', (req, res) => {
 app.post('/api/admin/logout', (req, res) => {
   adminSession = null;
   res.json({ success: true });
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    apiKey: "dummy-key",
+    authDomain: "pro-1-ad7ed.firebaseapp.com",
+    projectId: "pro-1-ad7ed",
+    storageBucket: "pro-1-ad7ed.appspot.com",
+    messagingSenderId: "110614773028441758210",
+    appId: "1:110614773028441758210:web:example"
+  });
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    let userExists = false;
+    if (useFirebase && db) {
+      try {
+        const userDoc = await db.collection('Users').doc(email).get();
+        userExists = userDoc.exists;
+      } catch (e) {}
+    }
+    
+    if (!userExists && !inMemoryUsers[email]) {
+      return res.status(404).json({ success: false, message: 'User not found in ' + WEBSITE_NAME });
+    }
+    
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    verificationCodes[email] = {
+      code,
+      purpose: 'forgot',
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    };
+    
+    console.log(`[${WEBSITE_NAME}] Reset password code for ${email}: ${code}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Reset code sent to ${email} from ${WEBSITE_NAME}`,
+      sentTo: email
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 const checkAdminAuth = (req, res, next) => {
