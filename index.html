@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>DebugOTP — Secure Verification</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap"
+    rel="stylesheet">
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --crimson: #c0142a;
+      --crimson-b: #e8193a;
+      --crimson-d: #8a0f1e;
+      --bg: #070707;
+      --bg2: #0f0f0f;
+      --bg3: #141414;
+      --glass: rgba(18, 18, 18, 0.85);
+      --glass2: rgba(22, 22, 22, 0.6);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-red: rgba(192, 20, 42, 0.3);
+      --text: #e8e8e8;
+      --text-dim: rgba(232, 232, 232, 0.4);
+      --text-muted: rgba(232, 232, 232, 0.22);
+    }
+
+    html,
+    body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden
+    }
+
+    .scene {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden
+    }
+
+    .scene-grad {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 60% at 15% 50%, rgba(192, 20, 42, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 85% 20%, rgba(192, 20, 42, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse 80% 80% at 50% 100%, rgba(10, 4, 6, 0.9) 0%, transparent 70%)
+    }
+
+    .grid-lines {
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%)
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none
+    }
+
+    .orb1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(192, 20, 42, 0.12), transparent 70%);
+      top: -10%;
+      left: -8%;
+      animation: orb-drift 20s ease-in-out infinite alternate
+    }
+
+    .orb2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(192, 20, 42, 0.07), transparent 70%);
+      bottom: 10%;
+      right: 5%;
+      animation: orb-drift 25s ease-in-out infinite alternate-reverse
+    }
+
+    @keyframes orb-drift {
+      0% {
+        transform: translate(0, 0)
+      }
+
+      100% {
+        transform: translate(30px, 40px)
+      }
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      opacity: 0.025;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px 200px
+    }
+
+    .main-wrap {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px
+    }
+
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--crimson-d), var(--crimson));
+      box-shadow: 0 0 30px rgba(192, 20, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1)
+    }
+
+    .brand-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.3px;
+      background: linear-gradient(135deg, #fff 30%, rgba(255, 255, 255, 0.5));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+      overflow: hidden;
+      position: relative
+    }
+
+    .auth-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(192, 20, 42, 0.6), transparent)
+    }
+
+    .auth-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+      pointer-events: none
+    }
+
+    .card-inner {
+      padding: 36px 36px 32px
+    }
+
+    .tab-bar {
+      display: flex;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border)
+    }
+
+    .tab {
+      flex: 1;
+      padding: 9px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all .25s;
+      text-align: center;
+      border: none;
+      background: transparent;
+      font-family: 'DM Sans', sans-serif;
+      letter-spacing: 0.01em
+    }
+
+    .tab.active {
+      background: rgba(192, 20, 42, 0.18);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(192, 20, 42, 0.2);
+      border: 1px solid var(--border-red)
+    }
+
+    .field {
+      margin-bottom: 18px
+    }
+
+    .field label {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 8px
+    }
+
+    .inp-wrap {
+      position: relative
+    }
+
+    .inp {
+      width: 100%;
+      padding: 12px 16px;
+      padding-right: 44px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      font-size: 13.5px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      transition: all .25s;
+      -webkit-appearance: none
+    }
+
+    .inp:focus {
+      outline: none;
+      border-color: var(--border-red);
+      background: rgba(192, 20, 42, 0.04);
+      box-shadow: 0 0 0 3px rgba(192, 20, 42, 0.08)
+    }
+
+    .inp::placeholder {
+      color: var(--text-muted)
+    }
+
+    .inp-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      transition: color .2s
+    }
+
+    .inp-icon:hover {
+      color: var(--text-dim)
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--crimson-d), var(--crimson), var(--crimson-b));
+      border: none;
+      cursor: pointer;
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      color: #fff;
+      letter-spacing: 0.02em;
+      transition: all .3s;
+      position: relative;
+      overflow: hidden
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 8px 30px rgba(192, 20, 42, 0.4);
+      transform: translateY(-1px)
+    }
+
+    .btn-ghost {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: rgba(192, 20, 42, 0.8);
+      font-size: 12.5px;
+      font-family: 'DM Sans', sans-serif;
+      transition: color .2s;
+      padding: 0
+    }
+
+    .view {
+      display: none
+    }
+
+    .view.active {
+      display: block
+    }
+
+    .status-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      background: rgba(192, 20, 42, 0.08);
+      border: 1px solid var(--border-red)
+    }
+
+    .otp-grid {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 24px
+    }
+
+    .otp-box {
+      width: 46px;
+      height: 54px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      font-family: 'Syne', sans-serif;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: #fff;
+      transition: all .2s;
+      -webkit-appearance: none
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      z-index: 999;
+      padding: 13px 22px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: blur(20px);
+      transition: transform .4s cubic-bezier(.4, 0, .2, 1);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: 90vw
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0)
+    }
+
+    .toast.ok {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #10b981
+    }
+
+    .toast.err {
+      background: rgba(192, 20, 42, 0.12);
+      border: 1px solid rgba(192, 20, 42, 0.3);
+      color: #f87171
+    }
+
+    h2 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      margin-bottom: 6px;
+      letter-spacing: -0.2px
+    }
+
+    .sub {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.5
+    }
+  </style>
+  <script src="/security.js"></script>
+</head>
+
+<body>
+  <div class="scene">
+    <div class="scene-grad"></div>
+    <div class="grid-lines"></div>
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+  </div>
+  <div class="noise"></div>
+  <div id="toast" class="toast"></div>
+
+  <div class="main-wrap">
+    <div style="width:100%;max-width:420px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:32px" id="brand">
+        <div class="brand-icon">
+          <ion-icon name="flash" style="font-size:22px;color:#fff"></ion-icon>
+        </div>
+        <div>
+          <div class="brand-name">DebugOTP</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:1px">Secure Verification Platform</div>
+        </div>
+      </div>
+
+      <div class="auth-card" id="authCard">
+        <div class="card-inner" id="tabSection">
+          <div class="tab-bar" id="tabBar">
+            <button class="tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+            <button class="tab" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+          </div>
+
+          <!-- LOGIN -->
+          <div class="view active" id="view-login">
+            <h2>Welcome back</h2>
+            <p class="sub">Sign in to your account to continue</p>
+            <div class="field">
+              <label>Email Address</label>
+              <div class="inp-wrap">
+                <input id="lE" class="inp" type="email" placeholder="you@example.com">
+                <div class="inp-icon"><ion-icon name="mail-outline" style="font-size:16px"></ion-icon></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <div class="inp-wrap">
+                <input id="lP" class="inp" type="password" placeholder="••••••••">
+                <div class="inp-icon" onclick="togglePass('lP',this)"><ion-icon name="eye-outline" style="font-size:16px"></ion-icon></div>
+              </div>
+            </div>
+            <div style="text-align:right;margin-bottom:22px">
+              <button class="btn-ghost" onclick="switchView('forgot')">Forgot password?</button>
+            </div>
+            <button id="lBtn" class="btn-primary" onclick="doLogin()">Sign In</button>
+          </div>
+
+          <!-- SIGNUP -->
+          <div class="view" id="view-signup">
+            <h2>Create account</h2>
+            <p class="sub">Start your journey with DebugOTP</p>
+            <div class="field">
+              <label>Full Name</label>
+              <div class="inp-wrap">
+                <input id="sN" class="inp" type="text" placeholder="John Doe">
+                <div class="inp-icon"><ion-icon name="person-outline" style="font-size:16px"></ion-icon></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Email Address</label>
+              <div class="inp-wrap">
+                <input id="sE" class="inp" type="email" placeholder="you@example.com">
+                <div class="inp-icon"><ion-icon name="mail-outline" style="font-size:16px"></ion-icon></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <div class="inp-wrap">
+                <input id="sP" class="inp" type="password" placeholder="••••••••">
+                <div class="inp-icon" onclick="togglePass('sP',this)"><ion-icon name="eye-outline" style="font-size:16px"></ion-icon></div>
+              </div>
+            </div>
+            <button id="sBtn" class="btn-primary" onclick="doSignup()">Create Account</button>
+          </div>
+        </div>
+
+        <!-- EMAIL SENT -->
+        <div class="view card-inner" id="view-emailsent" style="text-align:center">
+          <div class="status-icon">
+            <ion-icon name="mail-unread-outline" style="font-size:28px;color:#c0142a"></ion-icon>
+          </div>
+          <h2>Verify your email</h2>
+          <p class="sub">We sent a verification link to <strong id="sentAddr">—</strong></p>
+          <button class="btn-primary" onclick="switchTab('login')">I verified — Sign In</button>
+        </div>
+
+        <!-- FORGOT -->
+        <div class="view card-inner" id="view-forgot">
+          <h2>Reset password</h2>
+          <p class="sub">Enter your email to receive a reset link</p>
+          <div class="field">
+            <label>Email Address</label>
+            <input id="fE" class="inp" type="email" placeholder="you@example.com">
+          </div>
+          <button class="btn-primary" onclick="doForgot()">Send Reset Email</button>
+          <div style="text-align:center;margin-top:14px">
+            <button class="btn-ghost" onclick="switchTab('login')">← Back to Sign In</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if (localStorage.getItem('user')) window.location.href = '/dashboard';
+
+    let auth = null;
+    (async () => {
+      try {
+        const r = await fetch('/api/config');
+        const c = await r.json();
+        if (!firebase.apps.length) firebase.initializeApp(c);
+        auth = firebase.auth();
+      } catch (e) {}
+    })();
+
+    const allViews = ['login', 'signup', 'emailsent', 'forgot'];
+    let tmpSignup = null;
+
+    function toast(m, t = 'err') {
+      const el = document.getElementById('toast');
+      el.className = 'toast ' + t + ' show';
+      el.innerHTML = m;
+      setTimeout(() => el.classList.remove('show'), 4000);
+    }
+
+    function switchTab(mode) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + mode).classList.add('active');
+      document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+      document.getElementById('tabSignup').classList.toggle('active', mode === 'signup');
+      document.getElementById('tabBar').style.display = (mode === 'login' || mode === 'signup') ? 'flex' : 'none';
+    }
+
+    function switchView(v) {
+      document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+      document.getElementById('view-' + v).classList.add('active');
+      document.getElementById('tabBar').style.display = 'none';
+    }
+
+    function togglePass(id, wrap) {
+      const inp = document.getElementById(id);
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    async function doSignup() {
+      const name = document.getElementById('sN').value;
+      const email = document.getElementById('sE').value;
+      const pwd = document.getElementById('sP').value;
+      const r = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password: pwd }) });
+      const d = await r.json();
+      if (d.success) {
+        document.getElementById('sentAddr').textContent = email;
+        switchView('emailsent');
+      } else toast(d.message);
+    }
+
+    async function doLogin() {
+      const email = document.getElementById('lE').value;
+      const pwd = document.getElementById('lP').value;
+      const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pwd }) });
+      const d = await r.json();
+      if (d.success) {
+        localStorage.setItem('user', JSON.stringify(d.user));
+        window.location.href = '/dashboard';
+      } else toast(d.message);
+    }
+
+    async function doForgot() {
+      const email = document.getElementById('fE').value;
+      const r = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+      const d = await r.json();
+      toast(d.message, d.success ? 'ok' : 'err');
+    }
+  </script>
+</body>
+</html>

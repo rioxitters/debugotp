@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personalization — DebugOTP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *{font-family:'DM Sans',system-ui,sans-serif}
+        :root{--p:#c0142a;--s:#e8193a;--bg:#070707;--card:rgba(17,17,17,0.8);--border:rgba(255,255,255,0.06)}
+        body{background:var(--bg)}
+        .bg-mesh{position:fixed;inset:0;z-index:0;
+            background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(192,20,42,0.08),transparent),
+            radial-gradient(ellipse 60% 40% at 80% 100%,rgba(232,25,58,0.06),transparent)}
+        .card-glass{background:var(--card);border:1px solid var(--border);backdrop-filter:blur(20px)}
+        .btn-glow{background:linear-gradient(135deg,var(--p),var(--s));transition:all .4s cubic-bezier(.4,0,.2,1)}
+        .btn-glow:hover{transform:translateY(-2px);box-shadow:0 10px 40px rgba(192,20,42,0.3)}
+        .option-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);transition:all .3s;cursor:pointer}
+        .option-card:hover{border-color:rgba(192,20,42,0.3);background:rgba(192,20,42,0.04)}
+        .option-card.selected{border-color:var(--p);background:rgba(192,20,42,0.08);box-shadow:0 0 20px rgba(192,20,42,0.1)}
+        .option-card.selected .check-circle{background:var(--p);border-color:var(--p)}
+        .option-card.selected .check-circle i{opacity:1}
+        .check-circle{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;transition:all .3s}
+        .check-circle i{opacity:0;transition:opacity .3s;font-size:11px}
+    </style>
+  <script src="/security.js"></script>
+</head>
+<body class="text-white min-h-screen">
+    <div class="bg-mesh"></div>
+    <div class="relative z-10 min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md" id="container">
+            <div class="text-center mb-8" id="header">
+                <div class="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center" style="background:linear-gradient(135deg,var(--p),var(--s));box-shadow:0 0 30px rgba(192,20,42,0.3)">
+                    <i class="fas fa-wand-magic-sparkles text-white text-xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold mb-2">Almost there!</h1>
+                <p class="text-white/40 text-sm">Help us personalize your experience</p>
+            </div>
+
+            <div class="card-glass rounded-2xl p-7" id="formCard">
+                <p class="text-white/50 text-xs font-medium uppercase tracking-wider mb-5">Where did you hear about us?</p>
+                <div class="space-y-3 mb-8" id="options">
+                    <div class="option-card rounded-xl p-4 flex items-center gap-4" onclick="selectOption(this,'YouTube')">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:rgba(255,0,0,0.1)">
+                            <i class="fab fa-youtube text-red-400"></i>
+                        </div>
+                        <span class="font-medium text-sm flex-1">YouTube</span>
+                        <div class="check-circle"><i class="fas fa-check text-black"></i></div>
+                    </div>
+                    <div class="option-card rounded-xl p-4 flex items-center gap-4" onclick="selectOption(this,'Telegram')">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:rgba(0,136,204,0.1)">
+                            <i class="fab fa-telegram text-blue-400"></i>
+                        </div>
+                        <span class="font-medium text-sm flex-1">Telegram</span>
+                        <div class="check-circle"><i class="fas fa-check text-black"></i></div>
+                    </div>
+                    <div class="option-card rounded-xl p-4 flex items-center gap-4" onclick="selectOption(this,'AI')">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:rgba(139,92,246,0.1)">
+                            <i class="fas fa-robot text-violet-400"></i>
+                        </div>
+                        <span class="font-medium text-sm flex-1">AI Assistant</span>
+                        <div class="check-circle"><i class="fas fa-check text-black"></i></div>
+                    </div>
+                    <div class="option-card rounded-xl p-4 flex items-center gap-4" onclick="selectOption(this,'Other')">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:rgba(255,255,255,0.05)">
+                            <i class="fas fa-ellipsis text-white/50"></i>
+                        </div>
+                        <span class="font-medium text-sm flex-1">Other</span>
+                        <div class="check-circle"><i class="fas fa-check text-black"></i></div>
+                    </div>
+                </div>
+                <button onclick="proceed()" class="btn-glow w-full py-3 rounded-xl font-semibold text-sm text-black">
+                    <i class="fas fa-arrow-right mr-2"></i>Continue to Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+
+<script>
+let selectedSource='';
+function selectOption(el,value){
+    document.querySelectorAll('.option-card').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedSource=value;
+    gsap.from(el.querySelector('.check-circle'),{scale:0,duration:.3,ease:'back.out(3)'});
+}
+function proceed(){
+    if(!selectedSource){
+        const btn=document.querySelector('.btn-glow');
+        gsap.to(btn,{x:-8,duration:.08,yoyo:true,repeat:5});
+        return;
+    }
+    gsap.to('#container',{y:-20,opacity:0,duration:.4,ease:'power2.in',onComplete:()=>window.location.href='/loading'});
+}
+// GSAP entrance
+gsap.from('#header',{y:-30,opacity:0,duration:.7,ease:'power3.out'});
+gsap.from('#formCard',{y:30,opacity:0,duration:.7,delay:.2,ease:'power3.out'});
+gsap.from('.option-card',{x:-20,opacity:0,duration:.5,stagger:.1,delay:.4,ease:'power2.out'});
+</script>
+</body>
+</html>

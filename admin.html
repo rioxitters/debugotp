@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Admin Console — DebugOTP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --crimson: #c0142a;
+      --crimson-b: #e8193a;
+      --crimson-d: #8a0f1e;
+      --bg: #070707;
+      --bg2: #0d0d0d;
+      --bg3: #111;
+      --glass: rgba(13, 13, 13, 0.92);
+      --glass2: rgba(17, 17, 17, 0.7);
+      --border: rgba(255, 255, 255, 0.055);
+      --border-r: rgba(192, 20, 42, 0.22);
+      --text: #e0e0e0;
+      --dim: rgba(224, 224, 224, 0.38);
+      --muted: rgba(224, 224, 224, 0.18);
+      --sidebar: 230px;
+    }
+
+    html,
+    body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden
+    }
+
+    /* BG */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: radial-gradient(ellipse 50% 60% at 0% 30%, rgba(192, 20, 42, 0.04), transparent), radial-gradient(ellipse 40% 50% at 100% 80%, rgba(192, 20, 42, 0.03), transparent)
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      opacity: 0.022;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 180px 180px
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: var(--sidebar);
+      min-height: 100vh;
+      background: rgba(8, 8, 8, 0.97);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      left: 0;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+      backdrop-filter: blur(20px)
+    }
+
+    .sidebar-brand {
+      padding: 22px 18px 14px;
+      border-bottom: 1px solid var(--border)
+    }
+
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--crimson-d), var(--crimson));
+      box-shadow: 0 0 18px rgba(192, 20, 42, 0.3)
+    }
+
+    .nav-section {
+      padding: 10px 10px 0;
+      flex: 1;
+      overflow-y: auto
+    }
+
+    .nav-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      padding: 0 8px;
+      margin: 14px 0 5px
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--dim);
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      position: relative
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03)
+    }
+
+    .nav-item.active {
+      color: #fff;
+      background: rgba(192, 20, 42, 0.1);
+      border-color: var(--border-i)
+    }
+
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      background: linear-gradient(180deg, var(--crimson-d), var(--crimson));
+      border-radius: 0 2px 2px 0
+    }
+
+    .nav-item ion-icon {
+      font-size: 15px;
+      flex-shrink: 0
+    }
+
+    .nav-item.danger {
+      color: rgba(192, 20, 42, 0.5)
+    }
+
+    .nav-item.danger:hover {
+      color: rgba(232, 25, 58, 0.85);
+      background: rgba(192, 20, 42, 0.05)
+    }
+
+    .nav-footer {
+      padding: 10px;
+      border-top: 1px solid var(--border)
+    }
+
+    /* GLASS NAVBAR */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: var(--sidebar);
+      right: 0;
+      z-index: 40;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(7, 7, 7, 0.78);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px)
+    }
+
+    .navbar::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(192, 20, 42, 0.2), transparent);
+      pointer-events: none
+    }
+
+    /* MAIN */
+    .main {
+      margin-left: var(--sidebar);
+      padding-top: 58px;
+      min-height: 100vh
+    }
+
+    .content {
+      padding: 28px
+    }
+
+    .sec {
+      display: none
+    }
+
+    .sec.active {
+      display: block
+    }
+
+    .page-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: -0.3px;
+      margin-bottom: 3px
+    }
+
+    .page-sub {
+      font-size: 12px;
+      color: var(--dim);
+      margin-bottom: 24px
+    }
+
+    /* CARD */
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(20px);
+      overflow: hidden;
+      position: relative
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--crimson-d), var(--crimson))
+    }
+
+    /* STATS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px
+    }
+
+    .stat-c {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(20px)
+    }
+
+    .stat-c::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--crimson-d), var(--crimson))
+    }
+
+    .stat-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px
+    }
+
+    .stat-val {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 26px
+    }
+
+    /* TABLE */
+    .table-wrap {
+      overflow-x: auto
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse
+    }
+
+    thead tr {
+      border-bottom: 1px solid var(--border)
+    }
+
+    th {
+      padding: 12px 16px;
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-align: left;
+      white-space: nowrap
+    }
+
+    td {
+      padding: 12px 16px;
+      font-size: 12.5px;
+      vertical-align: middle
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.025);
+      transition: background .15s
+    }
+
+    tbody tr:last-child {
+      border-bottom: none
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.015)
+    }
+
+    /* BADGES */
+    .badge {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 10.5px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px
+    }
+
+    .b-ok {
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.2)
+    }
+
+    .b-err {
+      background: rgba(192, 20, 42, 0.1);
+      color: #f87171;
+      border: 1px solid rgba(192, 20, 42, 0.2)
+    }
+
+    .b-warn {
+      background: rgba(245, 158, 11, 0.1);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.2)
+    }
+
+    /* BTN */
+    .btn {
+      padding: 7px 14px;
+      border-radius: 9px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 11.5px;
+      cursor: pointer;
+      transition: all .2s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px
+    }
+
+    .btn-i {
+      background: linear-gradient(135deg, var(--crimson-d), var(--crimson));
+      color: #fff
+    }
+
+    .btn-i:hover {
+      box-shadow: 0 4px 16px rgba(192, 20, 42, 0.3);
+      transform: translateY(-1px)
+    }
+
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--dim)
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text)
+    }
+
+    .btn-warn {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: #fbbf24
+    }
+
+    .btn-warn:hover {
+      background: rgba(245, 158, 11, 0.14)
+    }
+
+    .btn-ok {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: #10b981
+    }
+
+    .btn-ok:hover {
+      background: rgba(16, 185, 129, 0.14)
+    }
+
+    .btn-danger {
+      background: rgba(192, 20, 42, 0.08);
+      border: 1px solid rgba(192, 20, 42, 0.2);
+      color: #f87171
+    }
+
+    .btn-danger:hover {
+      background: rgba(192, 20, 42, 0.14)
+    }
+
+    /* INP */
+    .inp {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .25s;
+      width: 100%
+    }
+
+    .inp:focus {
+      outline: none;
+      border-color: var(--border-i);
+      box-shadow: 0 0 0 3px rgba(192, 20, 42, 0.08)
+    }
+
+    .inp::placeholder {
+      color: var(--muted)
+    }
+
+    /* PROGRESS BAR */
+    .pbar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 99px;
+      overflow: hidden;
+      width: 100px
+    }
+
+    .pfill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--crimson-d), var(--crimson));
+      border-radius: 99px
+    }
+
+    .pfill-warn {
+      background: linear-gradient(90deg, #f59e0b, #ef4444)
+    }
+
+    /* DROPZONE */
+    .dropzone {
+      border: 2px dashed rgba(192, 20, 42, 0.2);
+      border-radius: 16px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .3s
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+      border-color: var(--crimson);
+      background: rgba(192, 20, 42, 0.04)
+    }
+
+    /* STAGING */
+    .stage-item {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    /* TOAST */
+    .toast {
+      position: fixed;
+      top: 18px;
+      right: 22px;
+      z-index: 999;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: blur(20px);
+      transform: translateX(120%);
+      transition: transform .4s cubic-bezier(.4, 0, .2, 1);
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    .toast.show {
+      transform: translateX(0)
+    }
+
+    .toast.ok {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: #10b981
+    }
+
+    .toast.err {
+      background: rgba(192, 20, 42, 0.1);
+      border: 1px solid rgba(192, 20, 42, 0.2);
+      color: #f87171
+    }
+
+    /* MODAL */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center
+    }
+
+    .modal-bg.show {
+      display: flex
+    }
+
+    .modal {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      max-width: 400px;
+      width: 100%;
+      margin: 16px;
+      position: relative
+    }
+
+    .modal::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--crimson-d), var(--crimson));
+      border-radius: 20px 20px 0 0
+    }
+
+    /* FILTER BTNS */
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--dim)
+    }
+
+    .filter-btn.active {
+      background: rgba(192, 20, 42, 0.1);
+      border-color: var(--border-i);
+      color: var(--crimson-b)
+    }
+
+    @media(max-width:768px) {
+      .sidebar {
+        transform: translateX(-100%)
+      }
+
+      .sidebar.open {
+        transform: translateX(0)
+      }
+
+      .main {
+        margin-left: 0
+      }
+
+      .navbar {
+        left: 0
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr
+      }
+    }
+  </style>
+  <script src="/security.js"></script>
+</head>
+
+<body>
+
+  <div class="bg"></div>
+  <div class="noise"></div>
+  <div id="toast" class="toast"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div style="display:flex;align-items:center;gap:11px">
+        <div class="brand-logo"><ion-icon name="shield-half-outline" style="font-size:17px;color:#fff"></ion-icon></div>
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">Admin Console</div>
+          <div style="font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-top:1px">
+            Firebase Manager</div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Management</div>
+      <div class="nav-item active" id="n-users" onclick="showSec('users',this)"><ion-icon
+          name="people-outline"></ion-icon>Users</div>
+      <div class="nav-item" id="n-limits" onclick="showSec('limits',this)"><ion-icon
+          name="options-outline"></ion-icon>Limits</div>
+      <div class="nav-item" id="n-upload" onclick="showSec('upload',this)"><ion-icon
+          name="cloud-upload-outline"></ion-icon>Upload JSON</div>
+      <div class="nav-item" id="n-history" onclick="showSec('history',this)"><ion-icon
+          name="time-outline"></ion-icon>Upload History</div>
+      <div class="nav-item" id="n-api" onclick="showSec('api',this)"><ion-icon name="stats-chart-outline"></ion-icon>API
+        Usage</div>
+    </div>
+    <div class="nav-footer">
+      <div class="nav-item" onclick="window.location.href='/dashboard'" style="color:var(--muted)"><ion-icon
+          name="arrow-back-outline"></ion-icon>Dashboard</div>
+      <div class="nav-item danger" onclick="doLogout()"><ion-icon name="log-out-outline"></ion-icon>Logout</div>
+    </div>
+  </aside>
+
+  <!-- GLASS NAVBAR -->
+  <nav class="navbar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 8px rgba(16,185,129,0.6)">
+      </div>
+      <span style="font-size:11.5px;color:var(--dim);font-family:'DM Mono',monospace">admin.secured</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div
+        style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--crimson-d),var(--crimson));display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:13px">
+        A</div>
+      <div>
+        <div style="font-size:13px;font-weight:500">Administrator</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">root access</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="content">
+
+      <!-- USERS -->
+      <div class="sec active" id="sec-users">
+        <div class="page-title">User Management</div>
+        <div class="page-sub">View and manage registered accounts</div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Usage</th>
+                  <th>Limits (D/M)</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersBody">
+                <tr>
+                  <td colspan="6" style="text-align:center;color:var(--muted);padding:32px">
+                    <ion-icon name="refresh-outline"
+                      style="font-size:18px;animation:spin 1s linear infinite;display:block;margin:0 auto 8px"></ion-icon>Loading...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- LIMITS -->
+      <div class="sec" id="sec-limits">
+        <div class="page-title">Global & User Limits</div>
+        <div class="page-sub">Configure OTP rate limits</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="card" style="padding:22px">
+            <div
+              style="font-family:'Syne',sans-serif;font-weight:600;font-size:13.5px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+              <ion-icon name="globe-outline" style="color:var(--crimson-b)"></ion-icon>Global Defaults
+            </div>
+            <div style="margin-bottom:14px">
+              <label
+                style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:7px">Daily
+                Limit</label>
+              <div style="display:flex;gap:10px"><input type="number" id="gDaily" class="inp" value="100"
+                  style="flex:1"><button onclick="updateGlobal()" class="btn btn-i"
+                  style="white-space:nowrap">Save</button></div>
+            </div>
+            <div>
+              <label
+                style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:7px">Monthly
+                Limit</label>
+              <div style="display:flex;gap:10px"><input type="number" id="gMonthly" class="inp" value="1000"
+                  style="flex:1"><button onclick="updateGlobal()" class="btn btn-i"
+                  style="white-space:nowrap">Save</button></div>
+            </div>
+          </div>
+          <div class="card" style="padding:22px">
+            <div
+              style="font-family:'Syne',sans-serif;font-weight:600;font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+              <ion-icon name="person-outline" style="color:#10b981"></ion-icon>Per-User Limits
+            </div>
+            <p style="font-size:12px;color:var(--dim);margin-bottom:14px">Set custom limits per user from the Users
+              section using the Limits action button.</p>
+            <div
+              style="background:rgba(192, 20, 42,0.05);border:1px solid var(--border-i);border-radius:10px;padding:12px;font-size:12px;color:var(--crimson-b);display:flex;gap:8px;align-items:flex-start">
+              <ion-icon name="information-circle-outline"
+                style="font-size:15px;flex-shrink:0;margin-top:1px"></ion-icon>
+              Users without custom limits inherit global defaults automatically.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- UPLOAD -->
+      <div class="sec" id="sec-upload">
+        <div class="page-title">Upload Firebase Projects</div>
+        <div class="page-sub">Add Firebase Admin SDK JSON credentials</div>
+        <div class="stats-grid" style="margin-bottom:20px">
+          <div class="stat-c">
+            <div class="stat-label">Total Uploaded</div>
+            <div class="stat-val" id="upTotal">0</div>
+          </div>
+          <div class="stat-c">
+            <div class="stat-label" style="color:rgba(16,185,129,0.5)">Successful</div>
+            <div class="stat-val" style="color:#10b981" id="upOk">0</div>
+          </div>
+          <div class="stat-c">
+            <div class="stat-label" style="color:rgba(192,20,42,0.5)">Failed</div>
+            <div class="stat-val" style="color:#f87171" id="upFail">0</div>
+          </div>
+        </div>
+        <div class="card" style="padding:24px">
+          <div class="dropzone" id="dropzone">
+            <div
+              style="width:54px;height:54px;background:rgba(192, 20, 42,0.08);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+              <ion-icon name="cloud-upload-outline" style="font-size:24px;color:var(--crimson-b)"></ion-icon>
+            </div>
+            <p style="font-size:14px;font-weight:500;margin-bottom:6px">Drag & Drop JSON files</p>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:18px">or click to browse — max 20 files</p>
+            <input type="file" id="fileInp" accept=".json" multiple style="display:none">
+            <button class="btn btn-i" onclick="document.getElementById('fileInp').click()"><ion-icon
+                name="folder-open-outline" style="font-size:14px"></ion-icon>Select Files</button>
+          </div>
+
+          <!-- Progress -->
+          <div id="upProg" style="display:none;margin-top:20px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;color:var(--dim)">Processing...</span>
+              <span id="upProgTxt" style="font-size:12px;color:var(--text);font-family:'DM Mono',monospace">0/0</span>
+            </div>
+            <div style="height:4px;background:rgba(255,255,255,0.05);border-radius:99px;overflow:hidden">
+              <div id="upProgBar"
+                style="height:100%;width:0%;background:linear-gradient(90deg,var(--crimson-d),var(--crimson));border-radius:99px;transition:width .3s">
+              </div>
+            </div>
+          </div>
+
+          <!-- Staging -->
+          <div id="upStaging" style="display:none;margin-top:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div style="font-size:13px;font-weight:600;color:var(--crimson-b);display:flex;align-items:center;gap:8px">
+                <ion-icon name="key-outline"></ion-icon>Provide Web API Keys</div>
+              <button onclick="cancelStaging()" class="btn btn-ghost">Cancel</button>
+            </div>
+            <div id="stagingList"
+              style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;max-height:280px;overflow-y:auto">
+            </div>
+            <button id="uploadStagedBtn" class="btn btn-i" style="width:100%;justify-content:center;padding:12px">
+              <ion-icon name="cloud-upload-outline" style="font-size:15px"></ion-icon>Start Secure Upload
+            </button>
+          </div>
+
+          <!-- Results -->
+          <div id="upResults" style="display:none;margin-top:20px"></div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div class="sec" id="sec-history">
+        <div
+          style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:12px;flex-wrap:wrap">
+          <div>
+            <div class="page-title" style="margin-bottom:3px">Upload History</div>
+            <div class="page-sub" style="margin-bottom:0">Past Firebase project uploads</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="filter-btn active" id="hf-all" onclick="loadHist('all',this)">All</button>
+            <button class="filter-btn" id="hf-7" onclick="loadHist('7days',this)">7 Days</button>
+            <button class="filter-btn" id="hf-30" onclick="loadHist('30days',this)">30 Days</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Project ID</th>
+                  <th>Status</th>
+                  <th>Validation</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="histBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- API USAGE -->
+      <div class="sec" id="sec-api">
+        <div class="page-title">API Usage</div>
+        <div class="page-sub">Firebase project pool status and consumption</div>
+        <div class="stats-grid">
+          <div class="stat-c">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-val" id="apiTotal">0</div>
+          </div>
+          <div class="stat-c">
+            <div class="stat-label" style="color:rgba(16,185,129,0.5)">Active Projects</div>
+            <div class="stat-val" style="color:#10b981" id="apiActive">0</div>
+          </div>
+          <div class="stat-c">
+            <div class="stat-label" style="color:rgba(192,20,42,0.5)">Exhausted</div>
+            <div class="stat-val" style="color:#f87171" id="apiExhausted">0</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project ID</th>
+                  <th>Usage</th>
+                  <th>Progress</th>
+                  <th>Status</th>
+                  <th>Validation</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="projBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- USER LIMITS MODAL -->
+  <div class="modal-bg" id="limModal">
+    <div class="modal">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Set User Limits</div>
+        <button onclick="document.getElementById('limModal').classList.remove('show')"
+          style="background:none;border:none;cursor:pointer;color:var(--dim)"><ion-icon name="close-outline"
+            style="font-size:20px"></ion-icon></button>
+      </div>
+      <div id="limEmail" style="font-size:12px;color:var(--muted);margin-bottom:18px;font-family:'DM Mono',monospace">—
+      </div>
+      <div style="margin-bottom:14px">
+        <label
+          style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px">Daily
+          Limit</label>
+        <input type="number" id="limDaily" class="inp">
+      </div>
+      <div style="margin-bottom:20px">
+        <label
+          style="display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px">Monthly
+          Limit</label>
+        <input type="number" id="limMonthly" class="inp">
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="document.getElementById('limModal').classList.remove('show')" class="btn btn-ghost"
+          style="flex:1;justify-content:center">Cancel</button>
+        <button onclick="saveLimits()" class="btn btn-i" style="flex:1;justify-content:center">Save Limits</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tk = localStorage.getItem('adminToken');
+    if (!tk) window.location.href = '/admin/dashboard';
+    const H = () => ({ 'Authorization': `Bearer ${tk}` });
+    let selEmail = null;
+
+    // Spin
+    const style = document.createElement('style'); style.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}'; document.head.appendChild(style);
+
+    async function secureFetch(url, opts = {}) {
+      try {
+        const res = await fetch(url, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
+        if (res.status === 401 || res.status === 403) { localStorage.removeItem('adminToken'); window.location.href = '/admin/dashboard'; return null }
+        return res;
+      } catch (e) { return null }
+    }
+
+    function toast(m, t = 'err') {
+      const el = document.getElementById('toast');
+      el.className = 'toast ' + t;
+      const icon = t === 'ok' ? 'checkmark-circle-outline' : 'close-circle-outline';
+      el.innerHTML = `<ion-icon name="${icon}" style="font-size:16px;flex-shrink:0"></ion-icon>${m}`;
+      el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000);
+    }
+
+    function showSec(id, el) {
+      document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('sec-' + id).classList.add('active');
+      if (el) el.classList.add('active');
+      gsap.from('#sec-' + id, { y: 12, opacity: 0, duration: .3, ease: 'power2.out' });
+      if (id === 'users') loadUsers();
+      if (id === 'limits') loadLimits();
+      if (id === 'api') loadProjects();
+      if (id === 'history') loadHist('all');
+    }
+
+    async function loadUsers() {
+      const r = await secureFetch('https://debugotp.onrender.com/api/admin/users'); if (!r) return;
+      const d = await r.json(); if (!d.success) return;
+      document.getElementById('usersBody').innerHTML = d.users.map(u => `<tr>
+  <td style="font-weight:500">${u.name || 'N/A'}</td>
+  <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:11.5px">${u.email || 'N/A'}</td>
+  <td style="color:var(--dim)">${u.usage_today || 0} <span style="color:var(--muted)">today</span></td>
+  <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:11.5px">${u.daily_limit || 100} / ${u.monthly_limit || 1000}</td>
+  <td><span class="badge ${u.status === 'Active' ? 'b-ok' : 'b-err'}">${u.status === 'Active' ? '<ion-icon name="checkmark-circle-outline" style="font-size:11px"></ion-icon>' : ''} ${u.status}</span></td>
+  <td>
+   <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button onclick="openLim('${u.email}',${u.daily_limit || 100},${u.monthly_limit || 1000})" class="btn" style="padding:5px 10px;font-size:10.5px;background:rgba(192, 20, 42,0.08);border:1px solid var(--border-i);color:var(--crimson-b)">Limits</button>
+    <button onclick="toggleBan('${u.email}','${u.status}')" class="btn ${u.status === 'Active' ? 'btn-warn' : 'btn-ok'}" style="padding:5px 10px;font-size:10.5px">${u.status === 'Active' ? 'Ban' : 'Unban'}</button>
+    <button onclick="delUser('${u.email}')" class="btn btn-danger" style="padding:5px 10px;font-size:10.5px"><ion-icon name="trash-outline" style="font-size:11px"></ion-icon></button>
+   </div>
+  </td>
+ </tr>`).join('');
+    }
+
+    async function toggleBan(e, s) { await secureFetch(`/api/admin/users/${e}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: s === 'Active' ? 'Banned' : 'Active' }) }); loadUsers() }
+    async function delUser(e) { if (!confirm('Delete this user?')) return; await secureFetch(`/api/admin/users/${e}`, { method: 'DELETE' }); loadUsers() }
+    function openLim(e, d, m) { selEmail = e; document.getElementById('limEmail').textContent = e; document.getElementById('limDaily').value = d; document.getElementById('limMonthly').value = m; document.getElementById('limModal').classList.add('show') }
+    async function saveLimits() {
+      if (!selEmail) return;
+      const d = +document.getElementById('limDaily').value, m = +document.getElementById('limMonthly').value;
+      await fetch(`/api/admin/users/${selEmail}/limits`, { method: 'PUT', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ daily: d, monthly: m }) });
+      document.getElementById('limModal').classList.remove('show'); loadUsers(); toast('Limits updated!', 'ok');
+    }
+
+    async function loadLimits() {
+      const r = await fetch('https://debugotp.onrender.com/api/admin/limits', { headers: H() }); const d = await r.json();
+      if (d.success) { document.getElementById('gDaily').value = d.globalLimits.daily; document.getElementById('gMonthly').value = d.globalLimits.monthly }
+    }
+    async function updateGlobal() {
+      const d = +document.getElementById('gDaily').value, m = +document.getElementById('gMonthly').value;
+      await fetch('https://debugotp.onrender.com/api/admin/limits', { method: 'PUT', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ daily: d, monthly: m }) });
+      toast('Global limits saved!', 'ok');
+    }
+
+    async function loadProjects() {
+      const r = await fetch('https://debugotp.onrender.com/api/admin/firebase-projects', { headers: H() }); const d = await r.json();
+      if (!d.success) return;
+      const active = d.projects.filter(p => p.status === 'Fresh' && p.validation_status === 'No issue').length;
+      const exhaust = d.projects.filter(p => p.status === 'Exhausted').length;
+      const total = d.projects.reduce((a, p) => a + (p.usage_count || 0), 0);
+      document.getElementById('apiTotal').textContent = total.toLocaleString();
+      document.getElementById('apiActive').textContent = active;
+      document.getElementById('apiExhausted').textContent = exhaust;
+      document.getElementById('projBody').innerHTML = d.projects.map(p => {
+        const pct = Math.min(100, ((p.usage_count || 0) / p.credits) * 100);
+        const high = pct > 80;
+        return `<tr>
+   <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500">${p.project_id}</td>
+   <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:11.5px">${(p.usage_count || 0).toLocaleString()} / ${p.credits.toLocaleString()}</td>
+   <td><div class="pbar"><div class="pfill ${high ? 'pfill-warn' : ''}" style="width:${pct}%"></div></div></td>
+   <td><span class="badge ${p.status === 'Fresh' ? 'b-ok' : 'b-err'}">${p.status}</span></td>
+   <td><span class="badge ${p.validation_status === 'No issue' || p.validation_status === 'Valid & Fresh' ? 'b-ok' : 'b-err'}">${p.validation_status || '—'}</span></td>
+   <td><button onclick="delProj('${p.project_id}')" class="btn btn-danger" style="padding:5px 10px;font-size:10.5px"><ion-icon name="trash-outline" style="font-size:11px"></ion-icon></button></td>
+  </tr>`;
+      }).join('');
+    }
+
+    async function delProj(id) {
+      if (!confirm('Delete this Firebase project JSON?')) return;
+      await secureFetch(`/api/admin/firebase-projects/${id}`, { method: 'DELETE' });
+      toast('Project deleted!', 'ok'); loadProjects();
+    }
+
+    async function loadHist(period, btn) {
+      if (btn) {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const r = await fetch(`/api/admin/upload-history?period=${period}`, { headers: H() }); const d = await r.json();
+      if (!d.success) return;
+      document.getElementById('histBody').innerHTML = d.history.map(h => `<tr>
+  <td style="font-weight:500">${h.fileName}</td>
+  <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:11.5px">${h.project_id || '—'}</td>
+  <td><span class="badge ${h.status === 'Success' ? 'b-ok' : 'b-err'}">${h.status}</span></td>
+  <td><span class="badge ${h.validation_status === 'No issue' ? 'b-ok' : 'b-err'}">${h.validation_status}</span></td>
+  <td style="color:var(--dim);font-size:12px">${new Date(h.uploadedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+ </tr>`).join('');
+    }
+
+    // File upload
+    const dz = document.getElementById('dropzone'), fi = document.getElementById('fileInp');
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover') });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); if (e.dataTransfer.files.length) stageFiles(e.dataTransfer.files) });
+    fi.addEventListener('change', e => { if (e.target.files.length) stageFiles(e.target.files) });
+
+    let stagedFiles = [];
+    function stageFiles(files) {
+      document.getElementById('upResults').style.display = 'none';
+      document.getElementById('upProg').style.display = 'none';
+      const sl = document.getElementById('stagingList'); sl.innerHTML = '';
+      stagedFiles = Array.from(files).slice(0, 20);
+      stagedFiles.forEach((f, i) => {
+        const div = document.createElement('div'); div.className = 'stage-item';
+        div.innerHTML = `
+   <div style="width:34px;height:34px;border-radius:9px;background:rgba(192, 20, 42,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <ion-icon name="document-outline" style="font-size:15px;color:var(--crimson-b)"></ion-icon>
+   </div>
+   <div style="flex:1;min-width:0">
+    <div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+   </div>
+   <input type="text" id="sk${i}" placeholder="Paste Web API Key (AIzaSy...)" class="inp" style="flex:2;font-family:'DM Mono',monospace;font-size:11.5px">
+  `;
+        sl.appendChild(div);
+      });
+      document.getElementById('upStaging').style.display = 'block';
+    }
+    function cancelStaging() { document.getElementById('upStaging').style.display = 'none'; stagedFiles = []; fi.value = '' }
+
+    document.getElementById('uploadStagedBtn').addEventListener('click', async () => {
+      let valid = true; const apiKeys = [];
+      stagedFiles.forEach((f, i) => { const k = document.getElementById('sk' + i).value.trim(); if (!k) valid = false; apiKeys.push(k) });
+      if (!valid) return toast('Provide API Keys for all files');
+      document.getElementById('upStaging').style.display = 'none';
+      await executeUpload(stagedFiles, apiKeys);
+    });
+
+    async function executeUpload(files, keys) {
+      document.getElementById('upProg').style.display = 'block';
+      const fd = new FormData();
+      files.forEach((f, i) => { fd.append('jsonFiles', f); fd.append('apiKeys', keys[i]) });
+      document.getElementById('upProgTxt').textContent = 'Scanning & Validating...';
+      let prog = 10;
+      const pi = setInterval(() => { if (prog < 90) prog += 4; document.getElementById('upProgBar').style.width = prog + '%' }, 500);
+      const r = await fetch('https://debugotp.onrender.com/api/admin/firebase-projects/multiple', { method: 'POST', headers: { Authorization: `Bearer ${tk}` }, body: fd });
+      clearInterval(pi); const d = await r.json();
+      if (d.success) {
+        document.getElementById('upProgBar').style.width = '100%';
+        document.getElementById('upProgTxt').textContent = 'Complete!';
+        document.getElementById('upTotal').textContent = d.total;
+        document.getElementById('upOk').textContent = d.successCount;
+        document.getElementById('upFail').textContent = d.total - d.successCount;
+        setTimeout(() => {
+          document.getElementById('upProg').style.display = 'none';
+          document.getElementById('upResults').style.display = 'block';
+          document.getElementById('upResults').innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">${d.results.map(res => `
+    <div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.015);border:1px solid ${res.status === 'Success' ? 'rgba(16,185,129,0.2)' : 'rgba(192,20,42,0.2)'}">
+     <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${res.status === 'Success' ? 'rgba(16,185,129,0.1)' : 'rgba(192,20,42,0.1)'}">
+       <ion-icon name="${res.status === 'Success' ? 'checkmark-circle-outline' : 'close-circle-outline'}" style="font-size:17px;color:${res.status === 'Success' ? '#10b981' : '#f87171'}"></ion-icon>
+      </div>
+      <div style="flex:1">
+       <div style="font-weight:600;font-size:13px;margin-bottom:3px">${res.fileName}</div>
+       <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">Project: ${res.project_id || 'Unknown / Corrupt'}</div>
+       <div style="display:flex;gap:8px;margin-top:6px">
+        <span style="font-size:10px;padding:2px 8px;border-radius:5px;background:rgba(255,255,255,0.04);color:var(--dim)">${res.credits} credits</span>
+        <span style="font-size:10px;color:${res.status === 'Success' ? '#10b981' : '#f87171'}">${res.validation_status}</span>
+       </div>
+      </div>
+     </div>
+    </div>`).join('')}</div>`;
+          loadProjects();
+        }, 800);
+      }
+      fi.value = '';
+    }
+
+    async function doLogout() {
+      await fetch('https://debugotp.onrender.com/api/admin/logout', { method: 'POST', headers: H() });
+      localStorage.removeItem('adminToken'); window.location.href = '/admin/dashboard';
+    }
+
+    loadUsers();
+
+    // LIVE AUTO-REFRESH EVERY 10 SECONDS
+    setInterval(() => {
+      if (document.getElementById('sec-users').classList.contains('active') && !document.getElementById('limModal').classList.contains('show')) {
+        loadUsers();
+      }
+      if (document.getElementById('sec-api').classList.contains('active')) {
+        loadProjects();
+      }
+      if (document.getElementById('sec-history').classList.contains('active')) {
+        const activeBtn = document.querySelector('.filter-btn.active');
+        if (activeBtn) loadHist(activeBtn.textContent.toLowerCase().replace(' ', ''), null);
+      }
+    }, 10000);
+
+    gsap.from('.sidebar', { x: -20, opacity: 0, duration: .5, ease: 'power3.out' });
+    gsap.from('.navbar', { y: -10, opacity: 0, duration: .4, delay: .1 });
+  </script>
+</body>
+
+</html>

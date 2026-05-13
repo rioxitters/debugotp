@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Loading — DebugOTP</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Mono:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #060606;
+            font-family: 'DM Mono', monospace
+        }
+
+        /* BG */
+        .bg-layers {
+            position: fixed;
+            inset: 0;
+            z-index: 0
+        }
+
+        .bg-vignette {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 20%, rgba(0, 0, 0, 0.85) 100%)
+        }
+
+        .bg-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(192, 20, 42, 0.08) 0%, transparent 65%);
+            animation: breathe 4s ease-in-out infinite
+        }
+
+        @keyframes breathe {
+
+            0%,
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.8
+            }
+
+            50% {
+                transform: translate(-50%, -50%) scale(1.15);
+                opacity: 1
+            }
+        }
+
+        /* GRID */
+        .grid {
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(192, 20, 42, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(192, 20, 42, 0.04) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 20s linear infinite
+        }
+
+        @keyframes grid-move {
+            from {
+                background-position: 0 0
+            }
+
+            to {
+                background-position: 50px 50px
+            }
+        }
+
+        /* SCAN LINE */
+        .scanline {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(192, 20, 42, 0.4), rgba(220, 30, 50, 0.6), rgba(192, 20, 42, 0.4), transparent);
+            animation: scan 4s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(192, 20, 42, 0.3), 0 0 40px rgba(192, 20, 42, 0.15)
+        }
+
+        @keyframes scan {
+            0% {
+                top: -2px;
+                opacity: 0
+            }
+
+            5% {
+                opacity: 1
+            }
+
+            95% {
+                opacity: 1
+            }
+
+            100% {
+                top: 100%;
+                opacity: 0
+            }
+        }
+
+        /* NOISE */
+        .noise {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            opacity: 0.03;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-size: 150px 150px
+        }
+
+        /* CORNERS */
+        .corner {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            z-index: 20;
+            opacity: 0
+        }
+
+        .corner-tl {
+            top: 24px;
+            left: 24px;
+            border-top: 2px solid rgba(192, 20, 42, 0.6);
+            border-left: 2px solid rgba(192, 20, 42, 0.6)
+        }
+
+        .corner-tr {
+            top: 24px;
+            right: 24px;
+            border-top: 2px solid rgba(192, 20, 42, 0.6);
+            border-right: 2px solid rgba(192, 20, 42, 0.6)
+        }
+
+        .corner-bl {
+            bottom: 24px;
+            left: 24px;
+            border-bottom: 2px solid rgba(192, 20, 42, 0.6);
+            border-left: 2px solid rgba(192, 20, 42, 0.6)
+        }
+
+        .corner-br {
+            bottom: 24px;
+            right: 24px;
+            border-bottom: 2px solid rgba(192, 20, 42, 0.6);
+            border-right: 2px solid rgba(192, 20, 42, 0.6)
+        }
+
+        /* MAIN CONTENT */
+        .stage {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0
+        }
+
+        /* ICON RING */
+        .ring-wrap {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            margin-bottom: 40px;
+            opacity: 0
+        }
+
+        .ring-svg {
+            width: 160px;
+            height: 160px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: rotate(-90deg)
+        }
+
+        .ring-track {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.04);
+            stroke-width: 3
+        }
+
+        .ring-fill {
+            fill: none;
+            stroke: url(#rg);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 471.24;
+            stroke-dashoffset: 471.24;
+            transition: stroke-dashoffset 0.1s linear;
+            filter: drop-shadow(0 0 6px rgba(192, 20, 42, 0.5))
+        }
+
+        .ring-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center
+        }
+
+        .ring-pct {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 32px;
+            color: #fff;
+            line-height: 1;
+            letter-spacing: -1px
+        }
+
+        .ring-label {
+            font-size: 9px;
+            font-weight: 400;
+            color: rgba(192, 20, 42, 0.8);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-top: 4px
+        }
+
+        /* LOGO ICON */
+        .logo-wrap {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #8a0f1e, #c0142a);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(192, 20, 42, 0.5);
+            z-index: 5
+        }
+
+        /* STATUS */
+        .status-block {
+            text-align: center;
+            margin-bottom: 40px;
+            opacity: 0
+        }
+
+        .status-main {
+            font-family: 'Syne', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.88);
+            margin-bottom: 6px;
+            min-height: 26px;
+            letter-spacing: -0.2px
+        }
+
+        .status-sub {
+            font-family: 'DM Mono', monospace;
+            font-size: 11.5px;
+            color: rgba(192, 20, 42, 0.7);
+            min-height: 18px;
+            letter-spacing: 0.05em
+        }
+
+        /* PROGRESS BAR */
+        .bar-wrap {
+            width: 320px;
+            opacity: 0
+        }
+
+        .bar-track {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 99px;
+            overflow: visible;
+            position: relative
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #8a0f1e, #c0142a, #e8193a);
+            border-radius: 99px;
+            transition: width 0.1s linear;
+            position: relative
+        }
+
+        .bar-fill::after {
+            content: '';
+            position: absolute;
+            right: -1px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #e8193a;
+            box-shadow: 0 0 10px rgba(232, 25, 58, 0.8), 0 0 20px rgba(232, 25, 58, 0.4)
+        }
+
+        .bar-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.2);
+            letter-spacing: 0.05em
+        }
+
+        /* STEPS */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 36px;
+            opacity: 0;
+            width: 320px
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11.5px;
+            color: rgba(255, 255, 255, 0.2);
+            transition: color .5s;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.02em
+        }
+
+        .step.done {
+            color: rgba(255, 255, 255, 0.5)
+        }
+
+        .step.active {
+            color: rgba(255, 255, 255, 0.85)
+        }
+
+        .step-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+            transition: all .4s
+        }
+
+        .step.done .step-dot {
+            background: #c0142a;
+            box-shadow: 0 0 8px rgba(192, 20, 42, 0.6)
+        }
+
+        .step.active .step-dot {
+            background: #e8193a;
+            box-shadow: 0 0 12px rgba(232, 25, 58, 0.8), 0 0 20px rgba(232, 25, 58, 0.3);
+            animation: pulse-dot 1s ease-in-out infinite
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                transform: scale(1)
+            }
+
+            50% {
+                transform: scale(1.4)
+            }
+        }
+
+        /* HUD CORNERS text */
+        .hud-text {
+            position: fixed;
+            font-size: 10px;
+            color: rgba(192, 20, 42, 0.3);
+            letter-spacing: 0.1em;
+            font-family: 'DM Mono', monospace;
+            z-index: 20
+        }
+
+        .hud-tl {
+            top: 34px;
+            left: 72px
+        }
+
+        .hud-tr {
+            top: 34px;
+            right: 72px;
+            text-align: right
+        }
+
+        .hud-bl {
+            bottom: 34px;
+            left: 72px
+        }
+
+        .hud-br {
+            bottom: 34px;
+            right: 72px;
+            text-align: right
+        }
+    </style>
+  <script src="/security.js"></script>
+</head>
+
+<body>
+
+    <div class="bg-layers">
+        <div class="bg-vignette"></div>
+        <div class="bg-glow"></div>
+        <div class="grid"></div>
+        <div class="scanline"></div>
+    </div>
+    <div class="noise"></div>
+
+    <!-- Corners -->
+    <div class="corner corner-tl" id="c1"></div>
+    <div class="corner corner-tr" id="c2"></div>
+    <div class="corner corner-bl" id="c3"></div>
+    <div class="corner corner-br" id="c4"></div>
+
+    <!-- HUD labels -->
+    <div class="hud-text hud-tl" id="hudTL">SYS://INIT</div>
+    <div class="hud-text hud-tr" id="hudTR">v2.4.1</div>
+    <div class="hud-text hud-bl" id="hudBL">SECURE_TUNNEL</div>
+    <div class="hud-text hud-br" id="hudBR" style="color:rgba(255,255,255,0.12)"></div>
+
+    <div class="stage">
+
+        <!-- Ring -->
+        <div class="ring-wrap" id="ringWrap">
+            <div class="logo-wrap">
+                <ion-icon name="flash" style="font-size:16px;color:#fff"></ion-icon>
+            </div>
+            <svg class="ring-svg" viewBox="0 0 160 160">
+                <defs>
+                    <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#8a0f1e" />
+                        <stop offset="100%" stop-color="#e8193a" />
+                    </linearGradient>
+                </defs>
+                <circle class="ring-track" cx="80" cy="80" r="75" />
+                <circle class="ring-fill" id="ringFill" cx="80" cy="80" r="75" />
+            </svg>
+            <div class="ring-center">
+                <div class="ring-pct" id="pctText">0%</div>
+                <div class="ring-label">Loading</div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="status-block" id="statusBlock">
+            <div class="status-main" id="statusMain">Initializing system...</div>
+            <div class="status-sub" id="statusSub">SYS:// establishing connection</div>
+        </div>
+
+        <!-- Bar -->
+        <div class="bar-wrap" id="barWrap">
+            <div class="bar-track">
+                <div class="bar-fill" id="barFill"></div>
+            </div>
+            <div class="bar-meta"><span>DEBUG_OTP</span><span id="barPct">0%</span></div>
+        </div>
+
+        <!-- Steps -->
+        <div class="steps" id="stepsWrap">
+            <div class="step" id="step0">
+                <div class="step-dot"></div><span>Connecting to Firebase clusters</span>
+            </div>
+            <div class="step" id="step1">
+                <div class="step-dot"></div><span>Loading project configurations</span>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-dot"></div><span>Validating security certificates</span>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-dot"></div><span>Syncing user session data</span>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-dot"></div><span>Configuring API endpoints</span>
+            </div>
+            <div class="step" id="step5">
+                <div class="step-dot"></div><span>Dashboard ready</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('hudBR').textContent = now.toLocaleTimeString('en-US', { hour12: false });
+        }
+        updateClock(); setInterval(updateClock, 1000);
+
+        const circumference = 2 * Math.PI * 75; // 471.24
+
+        const phases = [
+            { pct: 0, main: 'Initializing system...', sub: 'SYS:// establishing connection', step: -1 },
+            { pct: 15, main: 'Connecting to Firebase...', sub: 'FIREBASE:// loading clusters', step: 0 },
+            { pct: 30, main: 'Loading configurations...', sub: 'CONFIG:// project pool scan', step: 1 },
+            { pct: 48, main: 'Validating certificates...', sub: 'TLS:// certificate chain OK', step: 2 },
+            { pct: 63, main: 'Syncing session data...', sub: 'SESSION:// fetching user record', step: 3 },
+            { pct: 80, main: 'Configuring endpoints...', sub: 'API:// rate limiters active', step: 4 },
+            { pct: 95, main: 'Finalizing dashboard...', sub: 'READY:// all systems nominal', step: 5 },
+            { pct: 100, main: 'Access granted.', sub: 'REDIRECT:// dashboard', step: 5 },
+        ];
+
+        let currentPhase = 0;
+        let currentPct = 0;
+        let done = false;
+
+        // Durations (ms) between phase changes
+        const delays = [400, 700, 800, 700, 700, 700, 600, 600];
+
+        function setProgress(pct) {
+            const pctStr = Math.floor(pct) + '%';
+            document.getElementById('pctText').textContent = pctStr;
+            document.getElementById('barPct').textContent = pctStr;
+            document.getElementById('barFill').style.width = pct + '%';
+            const offset = circumference - (pct / 100) * circumference;
+            document.getElementById('ringFill').style.strokeDashoffset = offset;
+        }
+
+        function setStep(idx) {
+            for (let i = 0; i < 6; i++) {
+                const s = document.getElementById('step' + i);
+                if (i < idx) { s.className = 'step done' }
+                else if (i === idx) { s.className = 'step active' }
+                else { s.className = 'step' }
+            }
+        }
+
+        function runPhase(idx) {
+            if (idx >= phases.length) {
+                // Final: fade out and redirect
+                setTimeout(() => {
+                    gsap.to('.stage', {
+                        opacity: 0, scale: 0.97, duration: .7, ease: 'power2.in', onComplete: () => {
+                            const token = btoa(Math.random().toString(36).substring(2) + Date.now()).replace(/[/+=]/g, '').substring(0, 32);
+                            window.location.href = `/dashboard/${token}`;
+                        }
+                    });
+                }, 400);
+                return;
+            }
+            const phase = phases[idx];
+            // Animate pct smoothly
+            const startPct = currentPct;
+            const endPct = phase.pct;
+            const dur = (delays[idx] || 600) * 0.9;
+            const steps = Math.abs(endPct - startPct);
+            let elapsed = 0;
+            const interval = setInterval(() => {
+                elapsed += 16;
+                const t = Math.min(elapsed / dur, 1);
+                const easedT = t < 0.5 ? 2 * t * t : (-(2 * t * t - 4 * t + 2) + 1); // ease-in-out quad
+                const pct = startPct + (endPct - startPct) * easedT;
+                setProgress(pct);
+                currentPct = pct;
+                if (t >= 1) {
+                    clearInterval(interval);
+                    currentPct = endPct;
+                    setProgress(endPct);
+                }
+            }, 16);
+
+            // Update text
+            gsap.to('#statusMain', {
+                opacity: 0, y: -6, duration: .2, onComplete: () => {
+                    document.getElementById('statusMain').textContent = phase.main;
+                    gsap.to('#statusMain', { opacity: 1, y: 0, duration: .25 });
+                }
+            });
+            gsap.to('#statusSub', {
+                opacity: 0, duration: .15, onComplete: () => {
+                    document.getElementById('statusSub').textContent = phase.sub;
+                    gsap.to('#statusSub', { opacity: 1, duration: .2, delay: .05 });
+                }
+            });
+
+            if (phase.step >= 0) setStep(phase.step);
+
+            setTimeout(() => runPhase(idx + 1), delays[idx] || 700);
+        }
+
+        // Entrance animations
+        const tl = gsap.timeline();
+        tl.to(['.corner-tl', '.corner-tr', '.corner-bl', '.corner-br'], { opacity: 1, duration: .4, stagger: .08 })
+            .to('.hud-text', { opacity: 1, duration: .5 }, '-=0.2')
+            .to('#ringWrap', { opacity: 1, y: 0, duration: .6, ease: 'power3.out' }, '<0.1')
+            .to('#statusBlock', { opacity: 1, y: 0, duration: .5, ease: 'power3.out' }, '<0.15')
+            .to('#barWrap', { opacity: 1, duration: .5 }, '<0.1')
+            .to('#stepsWrap', { opacity: 1, duration: .5 }, '<0.1')
+            .call(() => runPhase(0));
+
+        gsap.set(['#statusBlock', '#barWrap', '#stepsWrap'], { y: 10 });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,44 @@
+[[redirects]]
+  from = "/dashboard/*"
+  to = "/dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/loading"
+  to = "/loading.html"
+  status = 200
+
+[[redirects]]
+  from = "/personalization"
+  to = "/personalization.html"
+  status = 200
+
+[[redirects]]
+  from = "/verify"
+  to = "/verify.html"
+  status = 200
+
+[[redirects]]
+  from = "/adminlogin"
+  to = "/adminlogin.html"
+  status = 200
+
+[[redirects]]
+  from = "/verify-email"
+  to = "/verify.html"
+  status = 200
+
+[[redirects]]
+  from = "/__/auth/action"
+  to = "/verify.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
