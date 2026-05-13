@@ -16,7 +16,9 @@ const ADMIN_PASSWORD = 'admin 518422';
 const WEBSITE_NAME = 'OTP Service';
 let adminSession = null;
 
-app.use(cors());
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.SITE_URL || 'https://debugotp.netlify.app';
+
+app.use(cors({ origin: [FRONTEND_URL, 'https://debugotp.netlify.app', 'http://localhost:3001'], credentials: true }));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -35,7 +37,7 @@ const writeJSON = (f, d) => fs.writeFileSync(f, JSON.stringify(d, null, 2));
 // ============================================================
 // PROJECT ROTATION SYSTEM
 // ============================================================
-let firebaseProjects = []; 
+let firebaseProjects = [];
 let currentProjectIndex = 0;
 
 const initFirebaseApp = (serviceAccount, apiKey, usage_count = 0) => {
@@ -77,11 +79,11 @@ loadAllProjects();
 async function fbAuthWithRotation(endpoint, body) {
   if (firebaseProjects.length === 0) throw new Error('No active Firebase projects available. Upload one in Admin Panel.');
   const project = firebaseProjects[currentProjectIndex % firebaseProjects.length];
-  
+
   try {
     const r = await axios.post(`https://identitytoolkit.googleapis.com/v1/${endpoint}?key=${project.apiKey}`, body);
     project.usage++;
-    
+
     // Save usage to api.json file
     const usageData = readJSON(API_USAGE_FILE, {});
     usageData[project.id] = project.usage;
@@ -125,7 +127,7 @@ app.post('/api/auth/signup', async (req, res) => {
     await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'VERIFY_EMAIL', idToken: fbUser.idToken });
 
     users.push({
-      name, email, status: 'Active', api_key: uuidv4(), firebaseUid: fbUser.localId, 
+      name, email, status: 'Active', api_key: uuidv4(), firebaseUid: fbUser.localId,
       emailVerified: false, createdAt: new Date(), usage_today: 0, daily_limit: 100, monthly_limit: 1000
     });
     writeJSON(USERS_FILE, users);
@@ -144,7 +146,7 @@ app.post('/api/auth/login', async (req, res) => {
         const r = await axios.post(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${proj.apiKey}`, { email, password, returnSecureToken: true });
         auth = r.data;
         break;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!auth) throw new Error('Invalid email or password');
@@ -167,13 +169,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) throw new Error('Email is required');
-    
+
     const users = readJSON(USERS_FILE);
     if (!users.find(u => u.email === email)) throw new Error('Account not found');
 
     // Register temporarily on current rotation project to ensure email delivery
-    try { await fbAuthWithRotation('accounts:signUp', { email, password: uuidv4(), returnSecureToken: false }); } catch(e) {}
-    
+    try { await fbAuthWithRotation('accounts:signUp', { email, password: uuidv4(), returnSecureToken: false }); } catch (e) { }
+
     await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'PASSWORD_RESET', email });
     res.json({ success: true, message: 'Password reset email sent' });
   } catch (e) {
@@ -246,7 +248,7 @@ app.get('/api/admin/firebase-projects', checkAdminAuth, (req, res) => {
 });
 
 app.get('/api/admin/upload-history', checkAdminAuth, (req, res) => {
-  res.json({ success: true, history: readJSON(PROJECTS_FILE).map(p => ({...p, status: 'Success', validation_status: 'Valid & Fresh', uploadedAt: new Date()})) });
+  res.json({ success: true, history: readJSON(PROJECTS_FILE).map(p => ({ ...p, status: 'Success', validation_status: 'Valid & Fresh', uploadedAt: new Date() })) });
 });
 
 const upload = multer({ dest: 'uploads/' });
@@ -256,10 +258,10 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
     let successCount = 0;
     const results = [];
     const projects = readJSON(PROJECTS_FILE);
-    
+
     // Ensure apiKeys is always an array
-    const submittedKeys = req.body.apiKeys 
-      ? (Array.isArray(req.body.apiKeys) ? req.body.apiKeys : [req.body.apiKeys]) 
+    const submittedKeys = req.body.apiKeys
+      ? (Array.isArray(req.body.apiKeys) ? req.body.apiKeys : [req.body.apiKeys])
       : [];
 
     for (let i = 0; i < req.files.length; i++) {
@@ -268,7 +270,7 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
 
       try {
         const sa = JSON.parse(fs.readFileSync(file.path, 'utf8'));
-        
+
         // 1. Basic Structure Check
         if (!sa.project_id || !sa.private_key || !sa.client_email) {
           throw new Error('Invalid JSON format');
@@ -281,15 +283,15 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
         }
 
         // 3. Simulate Deep Scan / Wait
-        await new Promise(r => setTimeout(r, 1200)); 
+        await new Promise(r => setTimeout(r, 1200));
 
         const proj = initFirebaseApp(sa, apiKey);
-        
+
         if (proj) {
           // 3. Real Security Verification (Try to generate a token)
           let isValid = false;
           let validationMsg = 'No issue';
-          
+
           try {
             await proj.app.auth().createCustomToken('test-admin-scan');
             isValid = true;
@@ -300,9 +302,9 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
 
           if (isValid) {
             firebaseProjects.push(proj);
-            projects.push({ 
-              project_id: sa.project_id, 
-              apiKey: apiKey, 
+            projects.push({
+              project_id: sa.project_id,
+              apiKey: apiKey,
               fileName: file.filename,
               client_email: sa.client_email,
               credits: 10000,
@@ -311,7 +313,7 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
             successCount++;
             results.push({ fileName: file.originalname, project_id: sa.project_id, status: 'Success', validation_status: 'Valid & Fresh', credits: '10,000 / 10,000' });
           } else {
-             results.push({ fileName: file.originalname, project_id: sa.project_id, status: 'Failed', validation_status: validationMsg, credits: '0 / 10,000' });
+            results.push({ fileName: file.originalname, project_id: sa.project_id, status: 'Failed', validation_status: validationMsg, credits: '0 / 10,000' });
           }
         } else {
           results.push({ fileName: file.originalname, project_id: null, status: 'Failed', validation_status: 'Connection Blocked', credits: 'N/A' });
@@ -323,8 +325,8 @@ app.post('/api/admin/firebase-projects/multiple', checkAdminAuth, upload.array('
 
     writeJSON(PROJECTS_FILE, projects);
     res.json({ success: true, total: req.files.length, successCount, results });
-  } catch (e) { 
-    res.status(500).json({ success: false, message: e.message }); 
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
@@ -336,7 +338,7 @@ app.put('/api/admin/firebase-projects/:id', checkAdminAuth, (req, res) => {
     p.apiKey = req.body.apiKey;
     writeJSON(PROJECTS_FILE, projects);
     const memP = firebaseProjects.find(x => x.id === pId);
-    if(memP) memP.apiKey = req.body.apiKey;
+    if (memP) memP.apiKey = req.body.apiKey;
     res.json({ success: true });
   } else {
     res.status(404).json({ success: false, message: 'Project not found' });
@@ -347,14 +349,14 @@ app.delete('/api/admin/firebase-projects/:id', checkAdminAuth, (req, res) => {
   let projects = readJSON(PROJECTS_FILE);
   const pId = req.params.id;
   const pIndex = projects.findIndex(p => p.project_id === pId);
-  
-  if(pIndex > -1) {
+
+  if (pIndex > -1) {
     const file = path.join(UPLOADS_DIR, projects[pIndex].fileName);
     if (fs.existsSync(file)) fs.unlinkSync(file);
     projects.splice(pIndex, 1);
     writeJSON(PROJECTS_FILE, projects);
   }
-  
+
   firebaseProjects = firebaseProjects.filter(p => p.id !== pId);
   res.json({ success: true });
 });
@@ -380,16 +382,16 @@ app.post('/api/otp/send', async (req, res) => {
       // Trick: Firebase only sends reset emails to existing users.
       // So we temporarily register the email in the current rotating project first.
       try {
-        await fbAuthWithRotation('accounts:signUp', { 
-          email: recipient, 
-          password: uuidv4(), 
-          returnSecureToken: false 
+        await fbAuthWithRotation('accounts:signUp', {
+          email: recipient,
+          password: uuidv4(),
+          returnSecureToken: false
         });
       } catch (e) { /* Ignore if already exists */ }
-      
+
       // Now Firebase will successfully dispatch the email
       await fbAuthWithRotation('accounts:sendOobCode', { requestType: 'PASSWORD_RESET', email: recipient });
-      
+
     } else if (type === 'phone' || type === 'sms') {
       await fbAuthWithRotation('accounts:sendVerificationCode', { phoneNumber: recipient });
     } else {
@@ -409,12 +411,12 @@ app.post('/api/otp/send', async (req, res) => {
 app.get('/dashboard/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.get('/dashboard', (req, res) => {
   const token = Buffer.from(Math.random().toString(36).substring(2) + Date.now()).toString('base64').replace(/[/+=]/g, '').substring(0, 32);
-  res.redirect(`/dashboard/${token}`);
+  res.redirect(`${FRONTEND_URL}/dashboard/${token}`);
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/adminlogin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adminlogin.html')));
-app.get('/admin', (req, res) => adminSession ? res.sendFile(path.join(__dirname, 'public', 'admin.html')) : res.redirect('/adminlogin'));
+app.get('/admin', (req, res) => adminSession ? res.sendFile(path.join(__dirname, 'public', 'admin.html')) : res.redirect(`${FRONTEND_URL}/adminlogin`));
 app.get('/loading', (req, res) => res.sendFile(path.join(__dirname, 'public', 'loading.html')));
 app.get('/personalization', (req, res) => res.sendFile(path.join(__dirname, 'public', 'personalization.html')));
 app.get(['/verify-email', '/verify', '/__/auth/action'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'verify.html')));
